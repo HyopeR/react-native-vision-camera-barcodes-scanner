@@ -6,64 +6,81 @@ import MLKitBarcodeScanning
 
 @objc(VisionCameraBarcodesScanner)
 public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
-      private var formats: [BarcodeFormat] = []
-      private var barcodesOptions: BarcodeScannerOptions
+    private var barcodeOptionsBuilder: BarcodeScannerOptions = BarcodeScannerOptions(formats: .all)
+    private var barcodeOptions: [Any] = []
+
     public override init(proxy: VisionCameraProxyHolder, options: [AnyHashable: Any]! = [:]) {
-        barcodesOptions = BarcodeScannerOptions(formats: .all)
         super.init(proxy: proxy, options: options)
-        options?.values.forEach { value in
-            if let valueList = value as? [Any] {
-                valueList.forEach { format in
-                    if let formatString = format as? String {
-                        if(formatString == "code_128"){ formats.append(.code128) }
-                        if(formatString == "code_39"){ formats.append(.code39) }
-                        if(formatString == "code_93"){ formats.append(.code93) }
-                        if(formatString == "codabar"){ formats.append(.codaBar) }
-                        if(formatString == "ean_13"){ formats.append(.EAN13) }
-                        if(formatString == "ean_8"){ formats.append(.EAN8) }
-                        if(formatString == "itf"){ formats.append(.ITF) }
-                        if(formatString == "upc_e"){ formats.append(.UPCE) }
-                        if(formatString == "upc_a"){ formats.append(.UPCA) }
-                        if(formatString == "qr"){ formats.append(.qrCode) }
-                        if(formatString == "pdf_417"){ formats.append(.PDF417) }
-                        if(formatString == "aztec"){ formats.append(.aztec)}
-                        if(formatString == "data_matrix"){ formats.append(.dataMatrix) }
-                        if(formatString == "all"){ formats.append(.all)} }
-                    }
+
+        barcodeOptions = getSafeBarcodeOptions(options: options)
+
+        let barcodeFormats = barcodeOptions.compactMap { format -> BarcodeFormat in
+            if let format = format as? String {
+                switch format {
+                case "code_128": return .code128
+                case "code_39": return .code39
+                case "code_93": return .code93
+                case "codabar": return .codaBar
+                case "ean_13": return .EAN13
+                case "ean_8": return .EAN8
+                case "itf": return .ITF
+                case "upc_e": return .UPCE
+                case "upc_a": return .UPCA
+                case "qr": return .qrCode
+                case "pdf_417": return .PDF417
+                case "aztec": return .aztec
+                case "data_matrix": return .dataMatrix
+                case "all": return .all
+                default: return .all
                 }
+            } else {
+                return .all
             }
-            let concatenatedFormats = BarcodeFormat(formats)
-            barcodesOptions = BarcodeScannerOptions(formats: concatenatedFormats)
+        }
+
+        if barcodeFormats.contains(.all) {
+            barcodeOptionsBuilder = BarcodeScannerOptions(formats: .all)
+        } else {
+            barcodeOptionsBuilder = BarcodeScannerOptions(formats: BarcodeFormat(barcodeFormats))
+        }
     }
 
-      public override func callback(
-          _ frame: Frame,
-          withArguments arguments: [AnyHashable: Any]?
-      ) -> Any {
-          var data:[Any] = []
-          let buffer = frame.buffer
-          let image = VisionImage(buffer: buffer);
-          image.orientation = getOrientation(orientation: frame.orientation)
-          let barcodeScanner = BarcodeScanner.barcodeScanner(options: barcodesOptions)
-          let dispatchGroup = DispatchGroup()
-          dispatchGroup.enter()
+    private func getSafeBarcodeOptions(options: [AnyHashable: Any]?) -> [Any] {
+        if let values = options?["options"] as? [Any] {
+            if values.isEmpty {
+                return ["all"]
+            } else {
+                return values
+            }
+        } else {
+            return ["all"]
+        }
+    }
 
-          barcodeScanner.process(image) {
-              barcodes,
-              error in
-              defer {
-                  dispatchGroup.leave()
-              }
-              guard error == nil,
-                    let barcodes = barcodes else { return }
-              for barcode in barcodes {
-                  let objData = VisionCameraBarcodesScanner.processData(barcode: barcode)
-                  data.append(objData)
-              }
-          }
-          dispatchGroup.wait()
-          return data
-      }
+    public override func callback(_ frame: Frame,withArguments arguments: [AnyHashable: Any]?) -> Any {
+        var data:[Any] = []
+        let buffer = frame.buffer
+        let image = VisionImage(buffer: buffer);
+        image.orientation = getOrientation(orientation: frame.orientation)
+        let barcodeScanner = BarcodeScanner.barcodeScanner(options: barcodeOptionsBuilder)
+        let dispatchGroup = DispatchGroup()
+        dispatchGroup.enter()
+
+        barcodeScanner.process(image) {
+            barcodes,
+            error in
+            defer {
+                dispatchGroup.leave()
+            }
+            guard error == nil, let barcodes = barcodes else { return }
+            for barcode in barcodes {
+                let objData = VisionCameraBarcodesScanner.processData(barcode: barcode)
+                data.append(objData)
+            }
+        }
+        dispatchGroup.wait()
+        return data
+    }
 
     private func getOrientation(orientation: UIImage.Orientation) -> UIImage.Orientation {
         switch orientation {
@@ -79,6 +96,7 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
           return .up
         }
     }
+
     static func processData(barcode:Barcode) -> [String:Any]{
          var objData : [String:Any] = [:]
             objData["height"] = barcode.frame.height

@@ -29,36 +29,54 @@ import com.google.mlkit.vision.barcode.common.Barcode.FORMAT_UPC_A
 import com.google.mlkit.vision.barcode.common.Barcode.FORMAT_UPC_E
 
 class VisionCameraBarcodesScannerModule(
-    proxy: VisionCameraProxy, options: MutableMap<String, Any>?
+    proxy: VisionCameraProxy,
+    options: MutableMap<String, Any>?
 ) : FrameProcessorPlugin() {
-    private val optionsBuilder: BarcodeScannerOptions.Builder = BarcodeScannerOptions.Builder()
-    private val barcodeOptions = options?.values?.firstOrNull() as? List<*> ?: listOf("all")
+    private val barcodeOptionsBuilder: BarcodeScannerOptions.Builder = BarcodeScannerOptions.Builder()
+    private val barcodeOptions = getSafeBarcodeOptions(options);
 
     init {
-        barcodeOptions.forEach { format ->
+        val barcodeFormats = barcodeOptions.mapNotNull { format ->
             when (format) {
-                "code_128" -> optionsBuilder.setBarcodeFormats(FORMAT_CODE_128)
-                "code_39" -> optionsBuilder.setBarcodeFormats(FORMAT_CODE_39)
-                "code_93" -> optionsBuilder.setBarcodeFormats(FORMAT_CODE_93)
-                "codabar" -> optionsBuilder.setBarcodeFormats(FORMAT_CODABAR)
-                "ean_13" -> optionsBuilder.setBarcodeFormats(FORMAT_EAN_13)
-                "ean_8" -> optionsBuilder.setBarcodeFormats(FORMAT_EAN_8)
-                "itf" -> optionsBuilder.setBarcodeFormats(FORMAT_ITF)
-                "upc_e" -> optionsBuilder.setBarcodeFormats(FORMAT_UPC_E)
-                "upc_a" -> optionsBuilder.setBarcodeFormats(FORMAT_UPC_A)
-                "qr" -> optionsBuilder.setBarcodeFormats(FORMAT_QR_CODE)
-                "pdf_417" -> optionsBuilder.setBarcodeFormats(FORMAT_PDF417)
-                "aztec" -> optionsBuilder.setBarcodeFormats(FORMAT_AZTEC)
-                "data-matrix" -> optionsBuilder.setBarcodeFormats(FORMAT_DATA_MATRIX)
-                "all" -> optionsBuilder.setBarcodeFormats(FORMAT_ALL_FORMATS)
-                else -> optionsBuilder.setBarcodeFormats(FORMAT_ALL_FORMATS)
+                "code_128" -> FORMAT_CODE_128
+                "code_39" -> FORMAT_CODE_39
+                "code_93" -> FORMAT_CODE_93
+                "codabar" -> FORMAT_CODABAR
+                "ean_13" -> FORMAT_EAN_13
+                "ean_8" -> FORMAT_EAN_8
+                "itf" -> FORMAT_ITF
+                "upc_e" -> FORMAT_UPC_E
+                "upc_a" -> FORMAT_UPC_A
+                "qr" -> FORMAT_QR_CODE
+                "pdf_417" -> FORMAT_PDF417
+                "aztec" -> FORMAT_AZTEC
+                "data-matrix" -> FORMAT_DATA_MATRIX
+                "all" -> FORMAT_ALL_FORMATS
+                else -> FORMAT_ALL_FORMATS
             }
+        }
+
+        if (barcodeFormats.contains(FORMAT_ALL_FORMATS)) {
+            barcodeOptionsBuilder.setBarcodeFormats(FORMAT_ALL_FORMATS)
+        } else {
+            val firstFormat = barcodeFormats.first()
+            val otherFormats = barcodeFormats.drop(1).toIntArray()
+            barcodeOptionsBuilder.setBarcodeFormats(firstFormat, *otherFormats)
+        }
+    }
+
+    private fun getSafeBarcodeOptions(options: MutableMap<String, Any>?): List<*> {
+        val values = options?.get("options") as? List<*>
+        return if (values.isNullOrEmpty()) {
+            listOf("all")
+        } else {
+            values
         }
     }
 
     override fun callback(frame: Frame, arguments: Map<String, Any>?): Any {
         try {
-            val scanner = BarcodeScanning.getClient(optionsBuilder.build())
+            val scanner = BarcodeScanning.getClient(barcodeOptionsBuilder.build())
             val mediaImage: Image = frame.image
             val image =
                 InputImage.fromMediaImage(mediaImage, frame.imageProxy.imageInfo.rotationDegrees)
@@ -115,5 +133,3 @@ class VisionCameraBarcodesScannerModule(
         }
     }
 }
-
-
