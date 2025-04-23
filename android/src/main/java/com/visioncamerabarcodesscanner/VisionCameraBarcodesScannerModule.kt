@@ -37,22 +37,26 @@ class VisionCameraBarcodesScannerModule(
 
     init {
         val barcodeFormats = barcodeOptions.mapNotNull { format ->
-            when (format) {
-                "code_128" -> FORMAT_CODE_128
-                "code_39" -> FORMAT_CODE_39
-                "code_93" -> FORMAT_CODE_93
-                "codabar" -> FORMAT_CODABAR
-                "ean_13" -> FORMAT_EAN_13
-                "ean_8" -> FORMAT_EAN_8
-                "itf" -> FORMAT_ITF
-                "upc_e" -> FORMAT_UPC_E
-                "upc_a" -> FORMAT_UPC_A
-                "qr" -> FORMAT_QR_CODE
-                "pdf_417" -> FORMAT_PDF417
-                "aztec" -> FORMAT_AZTEC
-                "data-matrix" -> FORMAT_DATA_MATRIX
-                "all" -> FORMAT_ALL_FORMATS
-                else -> FORMAT_ALL_FORMATS
+            if (format is String) {
+                when (format) {
+                    "code_128" -> FORMAT_CODE_128
+                    "code_39" -> FORMAT_CODE_39
+                    "code_93" -> FORMAT_CODE_93
+                    "codabar" -> FORMAT_CODABAR
+                    "ean_13" -> FORMAT_EAN_13
+                    "ean_8" -> FORMAT_EAN_8
+                    "itf" -> FORMAT_ITF
+                    "upc_e" -> FORMAT_UPC_E
+                    "upc_a" -> FORMAT_UPC_A
+                    "qr" -> FORMAT_QR_CODE
+                    "pdf_417" -> FORMAT_PDF417
+                    "aztec" -> FORMAT_AZTEC
+                    "data_matrix" -> FORMAT_DATA_MATRIX
+                    "all" -> FORMAT_ALL_FORMATS
+                    else -> FORMAT_ALL_FORMATS
+                }
+            } else {
+                FORMAT_ALL_FORMATS
             }
         }
 
