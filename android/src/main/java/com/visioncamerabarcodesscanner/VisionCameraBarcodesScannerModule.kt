@@ -28,15 +28,26 @@ import com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE
 import com.google.mlkit.vision.barcode.common.Barcode.FORMAT_UPC_A
 import com.google.mlkit.vision.barcode.common.Barcode.FORMAT_UPC_E
 
+data class Ratio(
+    val width: Float = 1f,
+    val height: Float = 1f,
+)
+
+data class Size(
+    val width: Int = 0,
+    val height: Int = 0,
+)
+
 class VisionCameraBarcodesScannerModule(
     proxy: VisionCameraProxy,
     options: MutableMap<String, Any>?
 ) : FrameProcessorPlugin() {
-    private val barcodeOptionsBuilder: BarcodeScannerOptions.Builder = BarcodeScannerOptions.Builder()
-    private val barcodeOptions = getSafeBarcodeOptions(options);
+    private val scannerBuilder: BarcodeScannerOptions.Builder = BarcodeScannerOptions.Builder()
+    private val scannerBarcodeFormats = getSafeBarcodeFormats(options)
+    private val scannerRatio = getSafeRatio(options)
 
     init {
-        val barcodeFormats = barcodeOptions.mapNotNull { format ->
+        val barcodeFormats = scannerBarcodeFormats.mapNotNull { format ->
             if (format is String) {
                 when (format) {
                     "code_128" -> FORMAT_CODE_128
@@ -61,33 +72,69 @@ class VisionCameraBarcodesScannerModule(
         }
 
         if (barcodeFormats.contains(FORMAT_ALL_FORMATS)) {
-            barcodeOptionsBuilder.setBarcodeFormats(FORMAT_ALL_FORMATS)
+            scannerBuilder.setBarcodeFormats(FORMAT_ALL_FORMATS)
         } else {
             val firstFormat = barcodeFormats.first()
             val otherFormats = barcodeFormats.drop(1).toIntArray()
-            barcodeOptionsBuilder.setBarcodeFormats(firstFormat, *otherFormats)
+            scannerBuilder.setBarcodeFormats(firstFormat, *otherFormats)
         }
     }
 
-    private fun getSafeBarcodeOptions(options: MutableMap<String, Any>?): List<*> {
-        val values = options?.get("options") as? List<*>
-        return if (values.isNullOrEmpty()) {
+    private fun getSafeBarcodeFormats(options: MutableMap<String, Any>?): List<*> {
+        val formats = options?.get("formats") as? List<*>
+        return if (formats.isNullOrEmpty()) {
             listOf("all")
         } else {
-            values
+            formats
+        }
+    }
+
+    private fun getSafeRatio(options: MutableMap<String, Any>?): Ratio {
+        val ratio = options?.get("ratio") as? Map<*, *>
+        val width = ((ratio?.get("width") as? Number)?.toFloat() ?: 1f).coerceIn(0f, 1f)
+        val height = ((ratio?.get("height") as? Number)?.toFloat() ?: 1f).coerceIn(0f, 1f)
+        return Ratio(width, height)
+    }
+
+    private fun filterBarcodes(barcodes: List<Barcode>, size: Size, ratio: Ratio): List<Barcode> {
+        val imageWidth = size.width
+        val imageHeight = size.height
+
+        val scanWidth = ratio.width * imageWidth
+        val scanHeight = ratio.height * imageHeight
+
+        val scanLeft = ((imageWidth - scanWidth) / 2f).toInt()
+        val scanTop = ((imageHeight - scanHeight) / 2f).toInt()
+        val scanRight = ((imageWidth + scanWidth) / 2f).toInt()
+        val scanBottom = ((imageHeight + scanHeight) / 2f).toInt()
+
+        return barcodes.filter { barcode ->
+            val box = barcode.boundingBox
+            box != null &&
+            box.left >= scanLeft &&
+            box.right <= scanRight &&
+            box.top >= scanTop &&
+            box.bottom <= scanBottom
         }
     }
 
     override fun callback(frame: Frame, arguments: Map<String, Any>?): Any {
         try {
-            val scanner = BarcodeScanning.getClient(barcodeOptionsBuilder.build())
+            val scanner = BarcodeScanning.getClient(scannerBuilder.build())
             val mediaImage: Image = frame.image
             val image =
                 InputImage.fromMediaImage(mediaImage, frame.imageProxy.imageInfo.rotationDegrees)
             val task: Task<List<Barcode>> = scanner.process(image)
             val barcodes: List<Barcode> = Tasks.await(task)
             val array = WritableNativeArray()
-            for (barcode in barcodes) {
+
+            val barcodesFiltered =
+                if (scannerRatio.width != 1f || scannerRatio.height != 1f)
+                    filterBarcodes(barcodes, Size(image.width, image.height), scannerRatio)
+                else
+                    barcodes
+
+            for (barcode in barcodesFiltered) {
                 val map = processData(barcode)
                 array.pushMap(map)
             }

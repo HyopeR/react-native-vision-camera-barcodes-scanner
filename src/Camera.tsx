@@ -11,7 +11,7 @@ import type {
   ForwardedRef,
   Barcode,
   BarcodeScannerPlugin,
-  ScanBarcodeOptions,
+  ScannerOptions,
 } from './types';
 import { useRunOnJS } from 'react-native-worklets-core';
 
@@ -53,7 +53,7 @@ export const Camera = forwardRef(function Camera(
 });
 
 export function useBarcodeScanner(
-  options?: ScanBarcodeOptions
+  options?: ScannerOptions
 ): BarcodeScannerPlugin {
   return useMemo(() => createBarcodeScannerPlugin(options), [options]);
 }
