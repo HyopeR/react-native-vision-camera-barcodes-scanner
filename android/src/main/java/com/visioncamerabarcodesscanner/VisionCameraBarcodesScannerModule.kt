@@ -121,21 +121,32 @@ class VisionCameraBarcodesScannerModule(
     override fun callback(frame: Frame, arguments: Map<String, Any>?): Any {
         try {
             val scanner = BarcodeScanning.getClient(scannerBuilder.build())
-            val mediaImage: Image = frame.image
-            val image =
-                InputImage.fromMediaImage(mediaImage, frame.imageProxy.imageInfo.rotationDegrees)
-            val task: Task<List<Barcode>> = scanner.process(image)
-            val barcodes: List<Barcode> = Tasks.await(task)
-            val array = WritableNativeArray()
+            val frameImage: Image = frame.image
+            val frameImageRotationDegrees = frame.imageProxy.imageInfo.rotationDegrees;
 
+            val image =
+                InputImage.fromMediaImage(frameImage, frameImageRotationDegrees)
+
+            // The default Android camera is landscape.
+            // Portrait conversion should be done.
+            val imageSize = when (frameImageRotationDegrees) {
+                90, 270 -> Size(image.height, image.width)
+                else -> Size(image.width, image.height)
+            }
+
+            val task: Task<List<Barcode>> = scanner.process(image)
+            val array = WritableNativeArray()
+            val barcodes: List<Barcode> = Tasks.await(task)
+
+            // Filter barcodes if scanning area is restricted.
             val barcodesFiltered =
                 if (scannerRatio.width != 1f || scannerRatio.height != 1f)
-                    filterBarcodes(barcodes, Size(image.width, image.height), scannerRatio)
+                    filterBarcodes(barcodes, imageSize, scannerRatio)
                 else
                     barcodes
 
             for (barcode in barcodesFiltered) {
-                val map = processData(barcode)
+                val map = processData(barcode, imageSize)
                 array.pushMap(map)
             }
             return array.toArrayList()
@@ -146,16 +157,31 @@ class VisionCameraBarcodesScannerModule(
 
 
     companion object {
-        fun processData(barcode: Barcode): ReadableNativeMap {
+        fun processData(barcode: Barcode, imageSize: Size): ReadableNativeMap {
             val map = WritableNativeMap()
             val bounds = barcode.boundingBox
             if (bounds != null) {
+                val imageWidth = imageSize.width.toFloat()
+                val imageHeight = imageSize.height.toFloat()
+                val width = bounds.width().toFloat()
+                val height = bounds.height().toFloat()
+                val left = bounds.left.toFloat()
+                val top = bounds.top.toFloat()
+
+                // Raw coordinates
                 map.putInt("width", bounds.width())
                 map.putInt("height", bounds.height())
-                map.putInt("top", bounds.top)
-                map.putInt("bottom", bounds.bottom)
                 map.putInt("left", bounds.left)
+                map.putInt("top", bounds.top)
                 map.putInt("right", bounds.right)
+                map.putInt("bottom", bounds.bottom)
+
+                // Normalized coordinates
+                // boundingBox values must be normalized for use by react-native.
+                map.putDouble("x", left.toDouble() / imageWidth)
+                map.putDouble("y", top.toDouble() / imageHeight)
+                map.putDouble("widthScale", width.toDouble() / imageWidth)
+                map.putDouble("heightScale", height.toDouble() / imageHeight)
             }
             val rawValue = barcode.rawValue
             map.putString("rawValue", rawValue)

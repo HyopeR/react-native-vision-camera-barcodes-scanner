@@ -36,13 +36,17 @@ export type ScannerOptions = {
 };
 
 export type Barcode = {
-  bottom: number;
+  rawValue: string;
+  width: number;
   height: number;
   left: number;
-  rawValue: string;
-  right: number;
   top: number;
-  width: number;
+  right: number;
+  bottom: number;
+  x: number;
+  y: number;
+  widthScale: number;
+  heightScale: number;
 };
 
 export type CameraTypes = {
