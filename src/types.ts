@@ -1,14 +1,31 @@
-import type { CameraProps } from 'react-native-vision-camera';
+import type {
+  CameraProps as CameraVisionProps,
+  Frame,
+} from 'react-native-vision-camera';
+
 export type {
   Frame,
   ReadonlyFrameProcessor,
   FrameProcessorPlugin,
 } from 'react-native-vision-camera';
-import type { Frame } from 'react-native-vision-camera';
 
 export type { ForwardedRef } from 'react';
 
-type BarcodeType = Readonly<{
+export type CameraProps = {
+  callback: (data: Barcode[]) => void;
+  options?: ScannerOptions;
+} & CameraVisionProps;
+
+export type ScannerPlugin = {
+  scanBarcodes: (frame: Frame) => Barcode[];
+};
+
+export type ScannerOptions = {
+  formats?: Array<keyof BarcodeType>;
+  ratio?: Ratio;
+};
+
+export type BarcodeType = Readonly<{
   aztec: string;
   code_128: string;
   code_39: string;
@@ -25,16 +42,6 @@ type BarcodeType = Readonly<{
   all: string;
 }>;
 
-export type ScanRatio = {
-  width?: number;
-  height?: number;
-};
-
-export type ScannerOptions = {
-  formats?: Array<keyof BarcodeType>;
-  ratio?: ScanRatio;
-};
-
 export type Barcode = {
   rawValue: string;
   width: number;
@@ -49,11 +56,7 @@ export type Barcode = {
   heightScale: number;
 };
 
-export type CameraTypes = {
-  callback: (data: Barcode[]) => void;
-  options?: ScannerOptions;
-} & CameraProps;
-
-export type BarcodeScannerPlugin = {
-  scanBarcodes: (frame: Frame) => Barcode[];
+export type Ratio = {
+  width?: number;
+  height?: number;
 };

@@ -1,5 +1,5 @@
-import type { Barcode, ScannerOptions } from './types';
 import { NativeModules, Platform } from 'react-native';
+import type { Barcode, ScannerOptions } from './types';
 
 export async function ImageScanner(
   uri: String,
