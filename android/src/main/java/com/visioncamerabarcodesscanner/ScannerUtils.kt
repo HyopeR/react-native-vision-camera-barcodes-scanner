@@ -122,10 +122,10 @@ object ScannerUtils {
 
             // Normalized values
             // Normalizes bounding box to 0–1 range for React Native layout.
-            map.putDouble("x", left.toDouble() / imageWidth)
-            map.putDouble("y", top.toDouble() / imageHeight)
-            map.putDouble("widthScale", width.toDouble() / imageWidth)
-            map.putDouble("heightScale", height.toDouble() / imageHeight)
+            map.putDouble("leftRatio", left.toDouble() / imageWidth)
+            map.putDouble("topRatio", top.toDouble() / imageHeight)
+            map.putDouble("widthRatio", width.toDouble() / imageWidth)
+            map.putDouble("heightRatio", height.toDouble() / imageHeight)
         }
         val rawValue = barcode.rawValue
         map.putString("rawValue", rawValue)

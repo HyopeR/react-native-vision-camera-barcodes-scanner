@@ -50,10 +50,10 @@ export type Barcode = {
   top: number;
   right: number;
   bottom: number;
-  x: number;
-  y: number;
-  widthScale: number;
-  heightScale: number;
+  leftRatio: number;
+  topRatio: number;
+  widthRatio: number;
+  heightRatio: number;
 };
 
 export type Ratio = {
