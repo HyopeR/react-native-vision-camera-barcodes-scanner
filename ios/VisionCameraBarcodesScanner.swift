@@ -33,8 +33,8 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
         image.orientation = ScannerUtils.getSafeOrientation(orientation: frame.orientation)
         let imageWidth = CVPixelBufferGetWidth(imagePixelBuffer)
         let imageHeight = CVPixelBufferGetHeight(imagePixelBuffer)
-        let imageSizeRaw = Size(width: imageWidth, height: imageHeight)
-        let imageSize = ScannerUtils.getImageSizeWithRotation(size: imageSizeRaw, orientation: image.orientation)
+        let imageSize = Size(width: imageWidth, height: imageHeight)
+        // let imageSizeWithRotation = ScannerUtils.getImageSizeWithRotation(size: imageSize, orientation: image.orientation)
 
         var array:[Any] = []
         let dispatchGroup = DispatchGroup()
