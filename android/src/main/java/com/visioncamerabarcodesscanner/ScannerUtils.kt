@@ -75,7 +75,7 @@ object ScannerUtils {
     fun getImageSizeWithRotation(size: Size, rotationDegrees: Int): Size {
         return when (rotationDegrees) {
             90, 270 -> Size(size.height, size.width)
-            else -> Size(size.width, size.height)
+            else -> size
         }
     }
 
@@ -95,8 +95,8 @@ object ScannerUtils {
             val box = barcode.boundingBox
             box != null &&
             box.left >= scanLeft &&
-            box.right <= scanRight &&
             box.top >= scanTop &&
+            box.right <= scanRight &&
             box.bottom <= scanBottom
         }
     }
@@ -150,6 +150,7 @@ object ScannerUtils {
                 map.putString("url", url)
             }
         }
+
         return map
     }
 }

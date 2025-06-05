@@ -39,6 +39,7 @@ class ImageScanner(reactContext: ReactApplicationContext) : ReactContextBaseJava
             scannerBuilder.setBarcodeFormats(firstFormat, *otherFormats)
         }
 
+        val array = WritableNativeArray()
         val scanner = BarcodeScanning.getClient(scannerBuilder.build())
 
         val imageUri = Uri.parse(uri)
@@ -46,7 +47,6 @@ class ImageScanner(reactContext: ReactApplicationContext) : ReactContextBaseJava
         val image = InputImage.fromFilePath(this.reactApplicationContext, imageUri)
         val imageSize = Size(image.width, image.height)
 
-        val array = WritableNativeArray()
         val task: Task<List<Barcode>> = scanner.process(image)
         val barcodes: List<Barcode> = Tasks.await(task)
 
