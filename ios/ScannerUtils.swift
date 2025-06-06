@@ -78,8 +78,8 @@ class ScannerUtils {
             case .right: return .right
             case .upMirrored: return .upMirrored
             case .leftMirrored: return .leftMirrored
-            case .downMirrored: return .downMirrored
             case .rightMirrored: return .rightMirrored
+            case .downMirrored: return .downMirrored
             default: return .up
         }
     }
