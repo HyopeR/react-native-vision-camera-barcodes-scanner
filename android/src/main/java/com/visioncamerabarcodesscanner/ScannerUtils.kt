@@ -103,30 +103,35 @@ object ScannerUtils {
 
     fun formatBarcode(barcode: Barcode, size: Size): ReadableNativeMap {
         val map = WritableNativeMap()
-        val bounds = barcode.boundingBox
-        if (bounds != null) {
-            val imageWidth = size.width.toFloat()
-            val imageHeight = size.height.toFloat()
-            val width = bounds.width().toFloat()
-            val height = bounds.height().toFloat()
-            val left = bounds.left.toFloat()
-            val top = bounds.top.toFloat()
+        val box = barcode.boundingBox
+
+        if (box != null) {
+            val imageWidth = size.width.toDouble()
+            val imageHeight = size.height.toDouble()
+
+            val width = box.width()
+            val height = box.height()
+            val left = box.left
+            val top = box.top
+            val right = box.right
+            val bottom = box.bottom
 
             // Raw values
-            map.putInt("width", bounds.width())
-            map.putInt("height", bounds.height())
-            map.putInt("left", bounds.left)
-            map.putInt("top", bounds.top)
-            map.putInt("right", bounds.right)
-            map.putInt("bottom", bounds.bottom)
+            map.putInt("width", width)
+            map.putInt("height", height)
+            map.putInt("left", left)
+            map.putInt("top", top)
+            map.putInt("right", right)
+            map.putInt("bottom", bottom)
 
             // Normalized values
             // Normalizes bounding box to 0–1 range for React Native layout.
-            map.putDouble("leftRatio", left.toDouble() / imageWidth)
-            map.putDouble("topRatio", top.toDouble() / imageHeight)
-            map.putDouble("widthRatio", width.toDouble() / imageWidth)
-            map.putDouble("heightRatio", height.toDouble() / imageHeight)
+            map.putDouble("leftRatio", left / imageWidth)
+            map.putDouble("topRatio", top / imageHeight)
+            map.putDouble("widthRatio", width / imageWidth)
+            map.putDouble("heightRatio", height / imageHeight)
         }
+
         val rawValue = barcode.rawValue
         map.putString("rawValue", rawValue)
         val displayValue = barcode.displayValue

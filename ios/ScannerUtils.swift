@@ -11,6 +11,15 @@ struct Size {
     let height: Int
 }
 
+struct FrameBoundingBox {
+    var width: CGFloat
+    var height: CGFloat
+    var left: CGFloat
+    var top: CGFloat
+    var right: CGFloat
+    var bottom: CGFloat
+}
+
 class ScannerUtils {
     static func getOptionsRatio(options: [AnyHashable: Any]?) -> Ratio {
         guard
@@ -64,23 +73,70 @@ class ScannerUtils {
     static func getSafeOrientation(orientation: UIImage.Orientation) -> UIImage.Orientation {
         switch orientation {
             case .up: return .up
-            case .left: return .right
+            case .left: return .left
             case .down: return .down
-            case .right: return .left
+            case .right: return .right
+            case .upMirrored: return .upMirrored
+            case .leftMirrored: return .leftMirrored
+            case .downMirrored: return .downMirrored
+            case .rightMirrored: return .rightMirrored
             default: return .up
         }
     }
 
     static func getImageSizeWithRotation(size: Size, orientation: UIImage.Orientation) -> Size {
         switch orientation {
-            case .left, .right, .leftMirrored, .rightMirrored:
+            // Portraits
+            case .left, .leftMirrored, .right, .rightMirrored:
                 return Size(width: size.height, height: size.width)
+            // Landscapes
             default:
                 return size
         }
     }
 
-    static func filterBarcodes(barcodes: [Barcode], size: Size, ratio: Ratio) -> [Barcode] {
+    // The iOS camera outputs coordinates in Landscape mode by default.
+    // Therefore, the following should be done in Portrait mode.
+    // 1. Swap width / height.
+    // 2. Swap x / y.
+    static func getFrameBoundingBox(barcode:Barcode, orientation: UIImage.Orientation) -> FrameBoundingBox {
+        let f = barcode.frame
+
+        switch orientation {
+        // Landscapes
+        case .up, .upMirrored, .down, .downMirrored:
+            return FrameBoundingBox(
+                width: f.width,
+                height: f.height,
+                left: min(f.minX, f.maxX),
+                top: min(f.minY, f.maxY),
+                right: max(f.minX, f.maxX),
+                bottom: max(f.minY, f.maxY),
+            )
+        // Portraits
+        case .left, .leftMirrored, .right, .rightMirrored:
+            return FrameBoundingBox(
+                width: f.height,
+                height: f.width,
+                left: min(f.minY, f.maxY),
+                top: min(f.minX, f.maxX),
+                right: max(f.minY, f.maxY),
+                bottom: max(f.minX, f.maxX),
+            )
+        // The iOS camera is Landscape by default.
+        default:
+            return FrameBoundingBox(
+                width: f.width,
+                height: f.height,
+                left: min(f.minX, f.maxX),
+                top: min(f.minY, f.maxY),
+                right: max(f.minX, f.maxX),
+                bottom: max(f.minY, f.maxY),
+            )
+        }
+    }
+
+    static func filterBarcodes(barcodes: [Barcode], size: Size, ratio: Ratio, orientation: UIImage.Orientation) -> [Barcode] {
         let imageWidth = CGFloat(size.width)
         let imageHeight = CGFloat(size.height)
 
@@ -93,32 +149,35 @@ class ScannerUtils {
         let scanBottom = (imageHeight + scanHeight) / 2.0
 
         return barcodes.filter { barcode in
-            let frame = barcode.frame
-            return frame.minX >= scanLeft &&
-                   frame.minY >= scanTop &&
-                   frame.maxX <= scanRight &&
-                   frame.maxY <= scanBottom
+            let box = self.getFrameBoundingBox(barcode: barcode, orientation: orientation)
+            return box.left >= scanLeft &&
+                   box.top >= scanTop &&
+                   box.right <= scanRight &&
+                   box.bottom <= scanBottom
         }
     }
 
-    static func formatBarcode(barcode:Barcode, size: Size) -> [String:Any] {
+    static func formatBarcode(barcode:Barcode, size: Size, orientation: UIImage.Orientation) -> [String:Any] {
         var map : [String:Any] = [:]
-        let frame = barcode.frame
+        let box = self.getFrameBoundingBox(barcode: barcode, orientation: orientation)
 
         let imageWidth = CGFloat(size.width)
         let imageHeight = CGFloat(size.height)
-        let left = frame.minX
-        let top = frame.minY
-        let width = frame.width
-        let height = frame.height
+
+        let width = box.width
+        let height = box.height
+        let left = box.left
+        let top = box.top
+        let right = box.right
+        let bottom = box.bottom
 
         // Raw values
-        map["width"] = frame.width
-        map["height"] = frame.height
-        map["left"] = frame.minX
-        map["top"] = frame.minY
-        map["right"] = frame.maxX
-        map["bottom"] = frame.maxY
+        map["width"] = width
+        map["height"] = height
+        map["left"] = left
+        map["top"] = top
+        map["right"] = right
+        map["bottom"] = bottom
 
         // Normalized values
         // Normalizes bounding box to 0–1 range for React Native layout.

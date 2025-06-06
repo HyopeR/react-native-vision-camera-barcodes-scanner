@@ -29,12 +29,16 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
         let imageBuffer = frame.buffer
         guard let imagePixelBuffer = CMSampleBufferGetImageBuffer(imageBuffer) else { return [] }
 
+        // On the iOS platform, rawBuffer data captured from the camera is in landscape mode by default.
+        // In order to use the generated frame coordinates, we need to process them using image.orientation.
         let image = VisionImage(buffer: imageBuffer)
         image.orientation = ScannerUtils.getSafeOrientation(orientation: frame.orientation)
         let imageWidth = CVPixelBufferGetWidth(imagePixelBuffer)
         let imageHeight = CVPixelBufferGetHeight(imagePixelBuffer)
-        let imageSize = Size(width: imageWidth, height: imageHeight)
-        // let imageSizeWithRotation = ScannerUtils.getImageSizeWithRotation(size: imageSize, orientation: image.orientation)
+
+        // Adjusts image size for portrait rotations (.left or .right)
+        let imageSizeRaw = Size(width: imageWidth, height: imageHeight)
+        let imageSize = ScannerUtils.getImageSizeWithRotation(size: imageSizeRaw, orientation: image.orientation)
 
         var array:[Any] = []
         let dispatchGroup = DispatchGroup()
@@ -46,13 +50,22 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
 
             let barcodesFiltered: [Barcode]
             if self.scannerRatio.width != 1.0 || self.scannerRatio.height != 1.0 {
-                barcodesFiltered = ScannerUtils.filterBarcodes(barcodes: barcodes, size: imageSize, ratio: self.scannerRatio)
+                barcodesFiltered = ScannerUtils.filterBarcodes(
+                    barcodes: barcodes,
+                    size: imageSize,
+                    ratio: self.scannerRatio,
+                    orientation: image.orientation
+                )
             } else {
                 barcodesFiltered = barcodes
             }
 
             for barcode in barcodesFiltered {
-                let map = ScannerUtils.formatBarcode(barcode: barcode, size: imageSize)
+                let map = ScannerUtils.formatBarcode(
+                    barcode: barcode,
+                    size: imageSize,
+                    orientation: image.orientation
+                )
                 array.append(map)
             }
         }

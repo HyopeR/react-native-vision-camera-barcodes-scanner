@@ -45,13 +45,22 @@ class ImageScanner: NSObject {
             let barcodes = try scanner.results(in: image)
             let barcodesFiltered: [Barcode]
             if scannerRatio.width != 1.0 || scannerRatio.height != 1.0 {
-                barcodesFiltered = ScannerUtils.filterBarcodes(barcodes: barcodes, size: imageSize, ratio: scannerRatio)
+                barcodesFiltered = ScannerUtils.filterBarcodes(
+                    barcodes: barcodes,
+                    size: imageSize,
+                    ratio: scannerRatio,
+                    orientation: image.orientation
+                )
             } else {
                 barcodesFiltered = barcodes
             }
 
             for barcode in barcodesFiltered {
-                let map = ScannerUtils.formatBarcode(barcode: barcode, size: imageSize)
+                let map = ScannerUtils.formatBarcode(
+                    barcode: barcode,
+                    size: imageSize,
+                    orientation: image.orientation
+                )
                 array.append(map)
             }
             resolve(array)
