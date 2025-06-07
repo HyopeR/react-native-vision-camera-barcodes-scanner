@@ -38,7 +38,7 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
 
         // Adjusts image size for portrait rotations (.left or .right)
         let imageSizeRaw = Size(width: imageWidth, height: imageHeight)
-        let imageSize = ScannerUtils.getImageSizeWithRotation(size: imageSizeRaw, orientation: image.orientation)
+        let imageSize = ScannerUtils.getImageSizeWithOrientation(size: imageSizeRaw, orientation: image.orientation)
 
         var array:[Any] = []
         let dispatchGroup = DispatchGroup()

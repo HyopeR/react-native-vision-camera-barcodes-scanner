@@ -11,7 +11,7 @@ struct Size {
     let height: Int
 }
 
-struct FrameBoundingBox {
+struct BoundingBox {
     var width: CGFloat
     var height: CGFloat
     var left: CGFloat
@@ -70,6 +70,11 @@ class ScannerUtils {
         }
     }
 
+
+    // .up    :  landscapeLeft (default)
+    // .left  :  portrait
+    // .down  :  landscapeRight
+    // .right :  portraitUpsideDown
     static func getSafeOrientation(orientation: UIImage.Orientation) -> UIImage.Orientation {
         switch orientation {
             case .up: return .up
@@ -84,7 +89,7 @@ class ScannerUtils {
         }
     }
 
-    static func getImageSizeWithRotation(size: Size, orientation: UIImage.Orientation) -> Size {
+    static func getImageSizeWithOrientation(size: Size, orientation: UIImage.Orientation) -> Size {
         switch orientation {
             // Portraits
             case .left, .leftMirrored, .right, .rightMirrored:
@@ -95,45 +100,92 @@ class ScannerUtils {
         }
     }
 
-    // The iOS camera outputs coordinates in Landscape mode by default.
-    // Therefore, the following should be done in Portrait mode.
-    // 1. Swap width / height.
-    // 2. Swap x / y.
-    static func getFrameBoundingBox(barcode:Barcode, orientation: UIImage.Orientation) -> FrameBoundingBox {
+    // Apply the coordinate system to different orientations.
+    // The default orientation is ".up".
+    // Conversion to other orientations is done.
+    static func getFrameRectWithOrientation(barcode:Barcode, orientation: UIImage.Orientation, size: Size) -> CGRect {
         let f = barcode.frame
 
+        // By default, the camera captures data in Landscape mode.
+        // Here it should always be width > height.
+        // imageSize to imageRawSize conversion.
+        let imageWidth = CGFloat(max(size.width, size.height))
+        let imageHeight = CGFloat(min(size.width, size.height))
+
         switch orientation {
-        // Landscapes
-        case .up, .upMirrored, .down, .downMirrored:
-            return FrameBoundingBox(
-                width: f.width,
-                height: f.height,
-                left: min(f.minX, f.maxX),
-                top: min(f.minY, f.maxY),
-                right: max(f.minX, f.maxX),
-                bottom: max(f.minY, f.maxY),
+        case .up:
+            return f
+
+        case .left:
+            return CGRect(
+                x: imageHeight - f.origin.y - f.size.height,
+                y: f.origin.x,
+                width: f.size.height,
+                height: f.size.width
             )
-        // Portraits
-        case .left, .leftMirrored, .right, .rightMirrored:
-            return FrameBoundingBox(
-                width: f.height,
-                height: f.width,
-                left: min(f.minY, f.maxY),
-                top: min(f.minX, f.maxX),
-                right: max(f.minY, f.maxY),
-                bottom: max(f.minX, f.maxX),
+
+        case .down:
+            return CGRect(
+                x: imageWidth - f.origin.x - f.size.width,
+                y: imageHeight - f.origin.y - f.size.height,
+                width: f.size.width,
+                height: f.size.height
             )
-        // The iOS camera is Landscape by default.
+
+        case .right:
+            return CGRect(
+                x: f.origin.y,
+                y: imageWidth - f.origin.x - f.size.width,
+                width: f.size.height,
+                height: f.size.width
+            )
+
+        case .upMirrored:
+            return CGRect(
+                x: imageWidth - f.origin.x - f.size.width,
+                y: f.origin.y,
+                width: f.size.width,
+                height: f.size.height
+            )
+
+        case .leftMirrored:
+            return CGRect(
+                x: f.origin.y,
+                y: f.origin.x,
+                width: f.size.height,
+                height: f.size.width
+            )
+
+        case .downMirrored:
+            return CGRect(
+                x: f.origin.x,
+                y: imageHeight - f.origin.y - f.size.height,
+                width: f.size.width,
+                height: f.size.height
+            )
+
+        case .rightMirrored:
+            return CGRect(
+                x: imageHeight - f.origin.y - f.size.height,
+                y: imageWidth - f.origin.x - f.size.width,
+                width: f.size.height,
+                height: f.size.width
+            )
+
         default:
-            return FrameBoundingBox(
-                width: f.width,
-                height: f.height,
-                left: min(f.minX, f.maxX),
-                top: min(f.minY, f.maxY),
-                right: max(f.minX, f.maxX),
-                bottom: max(f.minY, f.maxY),
-            )
+            return f
         }
+    }
+
+    static func getFrameBoxOnRect(rect: CGRect) -> BoundingBox {
+        return BoundingBox(
+            width: rect.size.width,
+            height: rect.size.height,
+            left: rect.origin.x,
+            top: rect.origin.y,
+            right: rect.origin.x + rect.size.width,
+            bottom: rect.origin.y + rect.size.height
+        )
     }
 
     static func filterBarcodes(barcodes: [Barcode], size: Size, ratio: Ratio, orientation: UIImage.Orientation) -> [Barcode] {
@@ -149,7 +201,8 @@ class ScannerUtils {
         let scanBottom = (imageHeight + scanHeight) / 2.0
 
         return barcodes.filter { barcode in
-            let box = self.getFrameBoundingBox(barcode: barcode, orientation: orientation)
+            let rect = self.getFrameRectWithOrientation(barcode: barcode, orientation: orientation, size: size)
+            let box = self.getFrameBoxOnRect(rect: rect)
             return box.left >= scanLeft &&
                    box.top >= scanTop &&
                    box.right <= scanRight &&
@@ -159,7 +212,8 @@ class ScannerUtils {
 
     static func formatBarcode(barcode:Barcode, size: Size, orientation: UIImage.Orientation) -> [String:Any] {
         var map : [String:Any] = [:]
-        let box = self.getFrameBoundingBox(barcode: barcode, orientation: orientation)
+        let rect = self.getFrameRectWithOrientation(barcode: barcode, orientation: orientation, size: size)
+        let box = self.getFrameBoxOnRect(rect: rect)
 
         let imageWidth = CGFloat(size.width)
         let imageHeight = CGFloat(size.height)
