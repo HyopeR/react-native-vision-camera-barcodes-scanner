@@ -1,9 +1,13 @@
-export { Camera, useBarcodeScanner } from './Camera';
-export { ImageScanner } from './ImageScanner';
+export { Camera } from './components/Camera';
+export { scanImage, ImageScanner } from './utils/scanImage';
+export { transformWithOrientation } from './utils/transformWithOrientation';
 export type {
   CameraProps,
-  ScannerOptions,
-  BarcodeType,
   Barcode,
+  BarcodeRect,
+  BarcodeType,
   Ratio,
+  Size,
+  Orientation,
+  ScannerOptions,
 } from './types';

@@ -101,6 +101,8 @@ object ScannerUtils {
         }
     }
 
+    // Normalized for "portrait" mode.
+    // If the device is in a different orientation, it should be transformed.
     fun formatBarcode(barcode: Barcode, size: Size): ReadableNativeMap {
         val map = WritableNativeMap()
         val box = barcode.boundingBox

@@ -70,40 +70,30 @@ class ScannerUtils {
         }
     }
 
-
-    // .up    :  landscapeLeft (default)
-    // .left  :  portrait
-    // .down  :  landscapeRight
-    // .right :  portraitUpsideDown
     static func getSafeOrientation(orientation: UIImage.Orientation) -> UIImage.Orientation {
         switch orientation {
             case .up: return .up
-            case .left: return .left
+            case .left: return .right
             case .down: return .down
-            case .right: return .right
-            case .upMirrored: return .upMirrored
-            case .leftMirrored: return .leftMirrored
-            case .downMirrored: return .downMirrored
-            case .rightMirrored: return .rightMirrored
+            case .right: return .left
             default: return .up
         }
     }
 
     static func getImageSizeWithOrientation(size: Size, orientation: UIImage.Orientation) -> Size {
         switch orientation {
-            // Portraits
             case .left, .leftMirrored, .right, .rightMirrored:
                 return Size(width: size.height, height: size.width)
-            // Landscapes
             default:
                 return size
         }
     }
 
-    // Apply the coordinate system to different orientations.
-    // The default orientation is ".up".
-    // Conversion to other orientations is done.
-    static func getFrameRectWithOrientation(barcode:Barcode, orientation: UIImage.Orientation, size: Size) -> CGRect {
+    // This transformation is necessary.
+    // Because the default image always comes as landscapeRight.
+    // On the Swift side, MLKit does not produce coordinates for a different orientation.
+    // This step is done automatically on the Kotlin side.
+    static func getFrameRectPortaitCompatible(barcode:Barcode, orientation: UIImage.Orientation, size: Size) -> CGRect {
         let f = barcode.frame
 
         // By default, the camera captures data in Landscape mode.
@@ -118,58 +108,26 @@ class ScannerUtils {
 
         case .left:
             return CGRect(
-                x: imageHeight - f.origin.y - f.size.height,
-                y: f.origin.x,
-                width: f.size.height,
-                height: f.size.width
-            )
-
-        case .down:
-            return CGRect(
-                x: imageWidth - f.origin.x - f.size.width,
-                y: imageHeight - f.origin.y - f.size.height,
-                width: f.size.width,
-                height: f.size.height
+                x: f.minY,
+                y: imageWidth - f.maxX,
+                width: f.height,
+                height: f.width
             )
 
         case .right:
             return CGRect(
-                x: f.origin.y,
-                y: imageWidth - f.origin.x - f.size.width,
-                width: f.size.height,
-                height: f.size.width
+                x: imageHeight - f.maxY,
+                y: f.minX,
+                width: f.height,
+                height: f.width
             )
 
-        case .upMirrored:
+        case .down:
             return CGRect(
-                x: imageWidth - f.origin.x - f.size.width,
-                y: f.origin.y,
-                width: f.size.width,
-                height: f.size.height
-            )
-
-        case .leftMirrored:
-            return CGRect(
-                x: f.origin.y,
-                y: f.origin.x,
-                width: f.size.height,
-                height: f.size.width
-            )
-
-        case .downMirrored:
-            return CGRect(
-                x: f.origin.x,
-                y: imageHeight - f.origin.y - f.size.height,
-                width: f.size.width,
-                height: f.size.height
-            )
-
-        case .rightMirrored:
-            return CGRect(
-                x: imageHeight - f.origin.y - f.size.height,
-                y: imageWidth - f.origin.x - f.size.width,
-                width: f.size.height,
-                height: f.size.width
+                x: imageWidth - f.maxX,
+                y: imageHeight - f.maxY,
+                width: f.width,
+                height: f.height
             )
 
         default:
@@ -179,12 +137,12 @@ class ScannerUtils {
 
     static func getFrameBoxOnRect(rect: CGRect) -> BoundingBox {
         return BoundingBox(
-            width: rect.size.width,
-            height: rect.size.height,
-            left: rect.origin.x,
-            top: rect.origin.y,
-            right: rect.origin.x + rect.size.width,
-            bottom: rect.origin.y + rect.size.height
+            width: rect.width,
+            height: rect.height,
+            left: rect.minX,
+            top: rect.minY,
+            right: rect.maxX,
+            bottom: rect.maxY
         )
     }
 
@@ -201,8 +159,9 @@ class ScannerUtils {
         let scanBottom = (imageHeight + scanHeight) / 2.0
 
         return barcodes.filter { barcode in
-            let rect = self.getFrameRectWithOrientation(barcode: barcode, orientation: orientation, size: size)
+            let rect = self.getFrameRectPortaitCompatible(barcode: barcode, orientation: orientation, size: size)
             let box = self.getFrameBoxOnRect(rect: rect)
+
             return box.left >= scanLeft &&
                    box.top >= scanTop &&
                    box.right <= scanRight &&
@@ -210,9 +169,11 @@ class ScannerUtils {
         }
     }
 
+    // Normalized for "portrait" mode.
+    // If the device is in a different orientation, it should be transformed.
     static func formatBarcode(barcode:Barcode, size: Size, orientation: UIImage.Orientation) -> [String:Any] {
         var map : [String:Any] = [:]
-        let rect = self.getFrameRectWithOrientation(barcode: barcode, orientation: orientation, size: size)
+        let rect = self.getFrameRectPortaitCompatible(barcode: barcode, orientation: orientation, size: size)
         let box = self.getFrameBoxOnRect(rect: rect)
 
         let imageWidth = CGFloat(size.width)

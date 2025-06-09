@@ -1,13 +1,13 @@
 import { NativeModules, Platform } from 'react-native';
-import type { Barcode, ScannerOptions } from './types';
+import type { Barcode, ScannerOptions } from '../types';
 
-export async function ImageScanner(
+export async function scanImage(
   uri: String,
   options?: ScannerOptions
 ): Promise<Barcode[]> {
   const { ImageScanner } = NativeModules;
 
-  const optionsSafe = options || {} as ScannerOptions;
+  const optionsSafe = options || ({} as ScannerOptions);
 
   if (!uri) {
     throw Error("Can't resolve img uri");
@@ -19,3 +19,9 @@ export async function ImageScanner(
     return await ImageScanner.process(uri, optionsSafe);
   }
 }
+
+/**
+ * @deprecated
+ * @description Use scanImage() instead.
+ */
+export const ImageScanner = scanImage;

@@ -7,6 +7,7 @@ export type {
   Frame,
   ReadonlyFrameProcessor,
   FrameProcessorPlugin,
+  Orientation,
 } from 'react-native-vision-camera';
 
 export type { ForwardedRef } from 'react';
@@ -56,7 +57,14 @@ export type Barcode = {
   heightRatio: number;
 };
 
+export type BarcodeRect = Pick<Barcode, 'left' | 'top' | 'width' | 'height'>;
+
 export type Ratio = {
   width?: number;
   height?: number;
+};
+
+export type Size = {
+  width: number;
+  height: number;
 };

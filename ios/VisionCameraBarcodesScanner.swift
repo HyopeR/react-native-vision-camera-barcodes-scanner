@@ -23,14 +23,26 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
         }
     }
 
-    public override func callback(_ frame: Frame,withArguments arguments: [AnyHashable: Any]?) -> Any {
+    /*
+     The iOS camera detects the image as "landscapeRight" by default.
+     frame.orientation is a value that tells us how to convert the image to "portrait" mode.
+     frame.orientation does not directly reflect the orientation of the image!
+
+     In rotation operations; the device's own "front face" is taken as reference.
+     The screen is facing you and the rotation is done by taking the top of the device as reference.
+
+     Image Orientation (Default)    Phone Orientation    Frame Orientation    Description
+     landscapeRight                 portrait             .right               Rotate 90° CW
+     landscapeRight                 landscapeRight       .up                  Rotate Not
+     landscapeRight                 landscapeLeft        .down                Rotate 180°
+     landscapeRight                 portraitUpsideDown   .left                Rotate 90° CCW
+     */
+    public override func callback(_ frame: Frame, withArguments arguments: [AnyHashable: Any]?) -> Any {
         let scanner = BarcodeScanner.barcodeScanner(options: scannerBuilder)
 
         let imageBuffer = frame.buffer
         guard let imagePixelBuffer = CMSampleBufferGetImageBuffer(imageBuffer) else { return [] }
 
-        // On the iOS platform, rawBuffer data captured from the camera is in landscape mode by default.
-        // In order to use the generated frame coordinates, we need to process them using image.orientation.
         let image = VisionImage(buffer: imageBuffer)
         image.orientation = ScannerUtils.getSafeOrientation(orientation: frame.orientation)
         let imageWidth = CVPixelBufferGetWidth(imagePixelBuffer)
