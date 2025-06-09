@@ -16,6 +16,7 @@ class ImageScanner: NSObject {
     ) {
         let scannerBarcodeFormats = ScannerUtils.getOptionsBarcodeFormats(options: options)
         let scannerRatio = ScannerUtils.getOptionsRatio(options: options)
+        let scannerOrientation = ScannerUtils.getOptionsOrientation(options: options)
 
         let barcodeFormats = ScannerUtils.getSafeBarcodeFormats(formats: scannerBarcodeFormats)
         if barcodeFormats.contains(.all) {
@@ -49,7 +50,7 @@ class ImageScanner: NSObject {
                     barcodes: barcodes,
                     size: imageSize,
                     ratio: scannerRatio,
-                    orientation: image.orientation
+                    rotation: image.orientation
                 )
             } else {
                 barcodesFiltered = barcodes
@@ -59,7 +60,8 @@ class ImageScanner: NSObject {
                 let map = ScannerUtils.formatBarcode(
                     barcode: barcode,
                     size: imageSize,
-                    orientation: image.orientation
+                    orientation: scannerOrientation,
+                    rotation: image.orientation
                 )
                 array.append(map)
             }

@@ -1,13 +1,14 @@
 import type {
   CameraProps as CameraVisionProps,
   Frame,
+  Orientation,
 } from 'react-native-vision-camera';
 
 export type {
   Frame,
-  ReadonlyFrameProcessor,
   FrameProcessorPlugin,
   Orientation,
+  ReadonlyFrameProcessor,
 } from 'react-native-vision-camera';
 
 export type { ForwardedRef } from 'react';
@@ -24,6 +25,7 @@ export type ScannerPlugin = {
 export type ScannerOptions = {
   formats?: Array<keyof BarcodeType>;
   ratio?: Ratio;
+  orientation?: Orientation;
 };
 
 export type BarcodeType = Readonly<{
@@ -56,8 +58,6 @@ export type Barcode = {
   widthRatio: number;
   heightRatio: number;
 };
-
-export type BarcodeRect = Pick<Barcode, 'left' | 'top' | 'width' | 'height'>;
 
 export type Ratio = {
   width?: number;

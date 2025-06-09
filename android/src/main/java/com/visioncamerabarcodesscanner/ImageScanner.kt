@@ -29,6 +29,7 @@ class ImageScanner(reactContext: ReactApplicationContext) : ReactContextBaseJava
     fun process(uri: String, options: MutableMap<String, Any>?, promise: Promise) {
         val scannerBarcodeFormats = ScannerUtils.getOptionsBarcodeFormats(options)
         val scannerRatio = ScannerUtils.getOptionsRatio(options)
+        val scannerOrientation = ScannerUtils.getOptionsOrientation(options)
 
         val barcodeFormats = ScannerUtils.getSafeBarcodeFormats(scannerBarcodeFormats)
         if (barcodeFormats.contains(FORMAT_ALL_FORMATS)) {
@@ -58,7 +59,7 @@ class ImageScanner(reactContext: ReactApplicationContext) : ReactContextBaseJava
                 barcodes
 
         for (barcode in barcodesFiltered) {
-            val map = ScannerUtils.formatBarcode(barcode, imageSize)
+            val map = ScannerUtils.formatBarcode(barcode, imageSize, scannerOrientation)
             array.pushMap(map)
         }
         promise.resolve(array)
