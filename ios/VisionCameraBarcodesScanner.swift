@@ -8,12 +8,14 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
     private var scannerBuilder: BarcodeScannerOptions = BarcodeScannerOptions(formats: .all)
     private var scannerBarcodeFormats: [Any] = []
     private var scannerRatio: Ratio = Ratio(width: 1, height: 1)
+    private var scannerOrientation: UIDeviceOrientation = .portrait
 
     public override init(proxy: VisionCameraProxyHolder, options: [AnyHashable: Any]! = [:]) {
         super.init(proxy: proxy, options: options)
 
         scannerBarcodeFormats = ScannerUtils.getOptionsBarcodeFormats(options: options)
         scannerRatio = ScannerUtils.getOptionsRatio(options: options)
+        scannerOrientation = ScannerUtils.getOptionsOrientation(options: options)
 
         let barcodeFormats = ScannerUtils.getSafeBarcodeFormats(formats: scannerBarcodeFormats)
         if barcodeFormats.contains(.all) {
@@ -23,22 +25,34 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
         }
     }
 
-    public override func callback(_ frame: Frame,withArguments arguments: [AnyHashable: Any]?) -> Any {
+    /*
+     The iOS camera detects the image as "landscapeRight" by default.
+     frame.orientation is a value that tells us how to convert the image to "portrait" mode.
+     frame.orientation does not directly reflect the orientation of the image!
+
+     In rotation operations; the device's own "front face" is taken as reference.
+     The screen is facing you and the rotation is done by taking the top of the device as reference.
+
+     Image Orientation (Default)    Phone Orientation    Frame Orientation    Description
+     landscapeRight                 portrait             .right               Rotate 90° CW
+     landscapeRight                 landscapeRight       .up                  Rotate Not
+     landscapeRight                 landscapeLeft        .down                Rotate 180°
+     landscapeRight                 portraitUpsideDown   .left                Rotate 90° CCW
+     */
+    public override func callback(_ frame: Frame, withArguments arguments: [AnyHashable: Any]?) -> Any {
         let scanner = BarcodeScanner.barcodeScanner(options: scannerBuilder)
 
         let imageBuffer = frame.buffer
         guard let imagePixelBuffer = CMSampleBufferGetImageBuffer(imageBuffer) else { return [] }
 
-        // On the iOS platform, rawBuffer data captured from the camera is in landscape mode by default.
-        // In order to use the generated frame coordinates, we need to process them using image.orientation.
         let image = VisionImage(buffer: imageBuffer)
-        image.orientation = ScannerUtils.getSafeOrientation(orientation: frame.orientation)
+        image.orientation = ScannerUtils.getSafeRotation(rotation: frame.orientation)
         let imageWidth = CVPixelBufferGetWidth(imagePixelBuffer)
         let imageHeight = CVPixelBufferGetHeight(imagePixelBuffer)
 
         // Adjusts image size for portrait rotations (.left or .right)
         let imageSizeRaw = Size(width: imageWidth, height: imageHeight)
-        let imageSize = ScannerUtils.getImageSizeWithOrientation(size: imageSizeRaw, orientation: image.orientation)
+        let imageSize = ScannerUtils.getImageSizeByRotation(size: imageSizeRaw, rotation: image.orientation)
 
         var array:[Any] = []
         let dispatchGroup = DispatchGroup()
@@ -54,7 +68,7 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
                     barcodes: barcodes,
                     size: imageSize,
                     ratio: self.scannerRatio,
-                    orientation: image.orientation
+                    rotation: image.orientation
                 )
             } else {
                 barcodesFiltered = barcodes
@@ -64,7 +78,8 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
                 let map = ScannerUtils.formatBarcode(
                     barcode: barcode,
                     size: imageSize,
-                    orientation: image.orientation
+                    orientation: self.scannerOrientation,
+                    rotation: image.orientation
                 )
                 array.append(map)
             }

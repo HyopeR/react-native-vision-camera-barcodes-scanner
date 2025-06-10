@@ -1,14 +1,28 @@
 import Foundation
 import MLKitBarcodeScanning
 
+struct Size {
+    let width: Int
+    let height: Int
+}
+
 struct Ratio {
     let width: CGFloat
     let height: CGFloat
 }
 
-struct Size {
-    let width: Int
-    let height: Int
+struct BoxRatio {
+    let leftRatio: CGFloat
+    let topRatio: CGFloat
+    let widthRatio: CGFloat
+    let heightRatio: CGFloat
+
+    init(_ leftRatio: CGFloat, _ topRatio: CGFloat, _ widthRatio: CGFloat, _ heightRatio: CGFloat) {
+        self.leftRatio = leftRatio
+        self.topRatio = topRatio
+        self.widthRatio = widthRatio
+        self.heightRatio = heightRatio
+    }
 }
 
 struct BoundingBox {
@@ -34,6 +48,22 @@ class ScannerUtils {
             width: min(max(width, 0.0), 1.0),
             height: min(max(height, 0.0), 1.0)
         )
+    }
+
+    static func getOptionsOrientation(options: [AnyHashable: Any]?) -> UIDeviceOrientation {
+        guard
+            let orientation = options?["orientation"] as? String
+        else {
+            return .portrait
+        }
+
+        switch orientation {
+            case "portrait": return .portrait
+            case "landscape-left": return .landscapeLeft
+            case "portrait-upside-down": return .portraitUpsideDown
+            case "landscape-right": return .landscapeRight
+            default: return .portrait
+        }
     }
 
     static func getOptionsBarcodeFormats(options: [AnyHashable: Any]?) -> [Any] {
@@ -70,125 +100,142 @@ class ScannerUtils {
         }
     }
 
-
-    // .up    :  landscapeLeft (default)
-    // .left  :  portrait
-    // .down  :  landscapeRight
-    // .right :  portraitUpsideDown
-    static func getSafeOrientation(orientation: UIImage.Orientation) -> UIImage.Orientation {
-        switch orientation {
+    static func getSafeRotation(rotation: UIImage.Orientation) -> UIImage.Orientation {
+        switch rotation {
             case .up: return .up
-            case .left: return .left
+            case .left: return .right
             case .down: return .down
-            case .right: return .right
-            case .upMirrored: return .upMirrored
-            case .leftMirrored: return .leftMirrored
-            case .downMirrored: return .downMirrored
-            case .rightMirrored: return .rightMirrored
+            case .right: return .left
             default: return .up
         }
     }
 
-    static func getImageSizeWithOrientation(size: Size, orientation: UIImage.Orientation) -> Size {
-        switch orientation {
-            // Portraits
+    static func getImageSizeByRotation(size: Size, rotation: UIImage.Orientation) -> Size {
+        switch rotation {
             case .left, .leftMirrored, .right, .rightMirrored:
                 return Size(width: size.height, height: size.width)
-            // Landscapes
             default:
                 return size
         }
     }
 
-    // Apply the coordinate system to different orientations.
-    // The default orientation is ".up".
-    // Conversion to other orientations is done.
-    static func getFrameRectWithOrientation(barcode:Barcode, orientation: UIImage.Orientation, size: Size) -> CGRect {
-        let f = barcode.frame
+    // It can be used if you want to switch to using corners instead of frames in the future.
+    static func getRectFromCorners(barcode: Barcode) -> CGRect {
+        guard let corners = barcode.cornerPoints, corners.count > 0 else {
+            return barcode.frame
+        }
 
+        let points = corners.map { $0.cgPointValue }
+        let xs = points.map { $0.x }
+        let ys = points.map { $0.y }
+
+        guard let minX = xs.min(),
+              let maxX = xs.max(),
+              let minY = ys.min(),
+              let maxY = ys.max() else {
+            return barcode.frame
+        }
+
+        return CGRect(
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY
+        )
+    }
+
+    // This transformation is necessary.
+    // Because the default image always comes as landscapeRight.
+    // On the Swift side, MLKit does not produce coordinates for a different orientation.
+    // This step is done automatically on the Kotlin side.
+    static func getFrameRectByRotation(rect: CGRect, size: Size, rotation: UIImage.Orientation,) -> CGRect {
         // By default, the camera captures data in Landscape mode.
         // Here it should always be width > height.
         // imageSize to imageRawSize conversion.
         let imageWidth = CGFloat(max(size.width, size.height))
         let imageHeight = CGFloat(min(size.width, size.height))
 
-        switch orientation {
+        switch rotation {
         case .up:
-            return f
-
+            return rect
         case .left:
             return CGRect(
-                x: imageHeight - f.origin.y - f.size.height,
-                y: f.origin.x,
-                width: f.size.height,
-                height: f.size.width
+                x: rect.minY,
+                y: imageWidth - rect.maxX,
+                width: rect.height,
+                height: rect.width
             )
-
-        case .down:
-            return CGRect(
-                x: imageWidth - f.origin.x - f.size.width,
-                y: imageHeight - f.origin.y - f.size.height,
-                width: f.size.width,
-                height: f.size.height
-            )
-
         case .right:
             return CGRect(
-                x: f.origin.y,
-                y: imageWidth - f.origin.x - f.size.width,
-                width: f.size.height,
-                height: f.size.width
+                x: imageHeight - rect.maxY,
+                y: rect.minX,
+                width: rect.height,
+                height: rect.width
             )
-
-        case .upMirrored:
+        case .down:
             return CGRect(
-                x: imageWidth - f.origin.x - f.size.width,
-                y: f.origin.y,
-                width: f.size.width,
-                height: f.size.height
+                x: imageWidth - rect.maxX,
+                y: imageHeight - rect.maxY,
+                width: rect.width,
+                height: rect.height
             )
-
-        case .leftMirrored:
-            return CGRect(
-                x: f.origin.y,
-                y: f.origin.x,
-                width: f.size.height,
-                height: f.size.width
-            )
-
-        case .downMirrored:
-            return CGRect(
-                x: f.origin.x,
-                y: imageHeight - f.origin.y - f.size.height,
-                width: f.size.width,
-                height: f.size.height
-            )
-
-        case .rightMirrored:
-            return CGRect(
-                x: imageHeight - f.origin.y - f.size.height,
-                y: imageWidth - f.origin.x - f.size.width,
-                width: f.size.height,
-                height: f.size.width
-            )
-
         default:
-            return f
+            return rect
         }
     }
 
-    static func getFrameBoxOnRect(rect: CGRect) -> BoundingBox {
+    static func getBoundingBoxOnRect(rect: CGRect) -> BoundingBox {
         return BoundingBox(
-            width: rect.size.width,
-            height: rect.size.height,
-            left: rect.origin.x,
-            top: rect.origin.y,
-            right: rect.origin.x + rect.size.width,
-            bottom: rect.origin.y + rect.size.height
+            width: rect.width,
+            height: rect.height,
+            left: rect.minX,
+            top: rect.minY,
+            right: rect.maxX,
+            bottom: rect.maxY
         )
     }
 
-    static func filterBarcodes(barcodes: [Barcode], size: Size, ratio: Ratio, orientation: UIImage.Orientation) -> [Barcode] {
+    static func getBoxRatioByOrientation(box: BoundingBox, size: Size, orientation: UIDeviceOrientation) -> BoxRatio {
+        let imageWidth = CGFloat(size.width)
+        let imageHeight = CGFloat(size.height)
+
+        // Normalizes bounding box to 0–1 range for React Native layout.
+        // Default portait.
+        let leftRatio = box.left / imageWidth
+        let topRatio = box.top / imageHeight
+        let widthRatio = box.width / imageWidth
+        let heightRatio = box.height / imageHeight
+
+        switch orientation {
+        case .portrait:
+            return BoxRatio(leftRatio, topRatio, widthRatio, heightRatio)
+        case .landscapeRight:
+            return BoxRatio(
+                topRatio,
+                1 - leftRatio - widthRatio,
+                heightRatio,
+                widthRatio
+            )
+        case .portraitUpsideDown:
+            return BoxRatio(
+                1 - leftRatio - widthRatio,
+                1 - topRatio - heightRatio,
+                widthRatio,
+                heightRatio
+            )
+        case .landscapeLeft:
+            return BoxRatio(
+                1 - topRatio - heightRatio,
+                leftRatio,
+                heightRatio,
+                widthRatio
+            )
+        default:
+            return BoxRatio(leftRatio, topRatio, widthRatio, heightRatio)
+        }
+    }
+
+    static func filterBarcodes(barcodes: [Barcode], size: Size, ratio: Ratio, rotation: UIImage.Orientation) -> [Barcode] {
         let imageWidth = CGFloat(size.width)
         let imageHeight = CGFloat(size.height)
 
@@ -201,8 +248,8 @@ class ScannerUtils {
         let scanBottom = (imageHeight + scanHeight) / 2.0
 
         return barcodes.filter { barcode in
-            let rect = self.getFrameRectWithOrientation(barcode: barcode, orientation: orientation, size: size)
-            let box = self.getFrameBoxOnRect(rect: rect)
+            let rect = self.getFrameRectByRotation(rect: barcode.frame, size: size, rotation: rotation)
+            let box = self.getBoundingBoxOnRect(rect: rect)
             return box.left >= scanLeft &&
                    box.top >= scanTop &&
                    box.right <= scanRight &&
@@ -210,35 +257,30 @@ class ScannerUtils {
         }
     }
 
-    static func formatBarcode(barcode:Barcode, size: Size, orientation: UIImage.Orientation) -> [String:Any] {
+    static func formatBarcode(
+        barcode: Barcode,
+        size: Size,
+        orientation: UIDeviceOrientation,
+        rotation: UIImage.Orientation
+    ) -> [String:Any] {
         var map : [String:Any] = [:]
-        let rect = self.getFrameRectWithOrientation(barcode: barcode, orientation: orientation, size: size)
-        let box = self.getFrameBoxOnRect(rect: rect)
-
-        let imageWidth = CGFloat(size.width)
-        let imageHeight = CGFloat(size.height)
-
-        let width = box.width
-        let height = box.height
-        let left = box.left
-        let top = box.top
-        let right = box.right
-        let bottom = box.bottom
+        let rect = self.getFrameRectByRotation(rect: barcode.frame, size: size, rotation: rotation)
+        let box = self.getBoundingBoxOnRect(rect: rect)
+        let boxRatio = self.getBoxRatioByOrientation(box: box, size: size, orientation: orientation)
 
         // Raw values
-        map["width"] = width
-        map["height"] = height
-        map["left"] = left
-        map["top"] = top
-        map["right"] = right
-        map["bottom"] = bottom
+        map["width"] = box.width
+        map["height"] = box.height
+        map["left"] = box.left
+        map["top"] = box.top
+        map["right"] = box.right
+        map["bottom"] = box.bottom
 
         // Normalized values
-        // Normalizes bounding box to 0–1 range for React Native layout.
-        map["leftRatio"] = left / imageWidth
-        map["topRatio"] = top / imageHeight
-        map["widthRatio"] = width / imageWidth
-        map["heightRatio"] = height / imageHeight
+        map["leftRatio"] = boxRatio.leftRatio
+        map["topRatio"] = boxRatio.topRatio
+        map["widthRatio"] = boxRatio.widthRatio
+        map["heightRatio"] = boxRatio.heightRatio
 
         let displayValue = barcode.displayValue
         map["displayValue"] = displayValue

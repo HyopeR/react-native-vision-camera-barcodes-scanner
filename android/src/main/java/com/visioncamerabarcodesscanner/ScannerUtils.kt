@@ -1,5 +1,7 @@
 package com.visioncamerabarcodesscanner
 
+import android.graphics.Rect
+
 import com.facebook.react.bridge.ReadableNativeMap
 import com.facebook.react.bridge.WritableNativeMap
 
@@ -19,15 +21,29 @@ import com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE
 import com.google.mlkit.vision.barcode.common.Barcode.FORMAT_UPC_A
 import com.google.mlkit.vision.barcode.common.Barcode.FORMAT_UPC_E
 
+data class Size(
+    val width: Int = 0,
+    val height: Int = 0,
+)
+
 data class Ratio(
     val width: Float = 1f,
     val height: Float = 1f,
 )
 
-data class Size(
-    val width: Int = 0,
-    val height: Int = 0,
+data class BoxRatio(
+    val leftRatio: Double,
+    val topRatio: Double,
+    val widthRatio: Double,
+    val heightRatio: Double,
 )
+
+enum class Orientation (val value: String) {
+    PORTRAIT("portrait"),
+    LANDSCAPE_RIGHT("landscape-right"),
+    PORTRAIT_UPSIDE_DOWN("portrait-upside-down"),
+    LANDSCAPE_LEFT("landscape-left");
+}
 
 object ScannerUtils {
     fun getOptionsRatio(options: MutableMap<String, Any>?): Ratio {
@@ -35,6 +51,16 @@ object ScannerUtils {
         val width = ((ratio?.get("width") as? Number)?.toFloat() ?: 1f).coerceIn(0f, 1f)
         val height = ((ratio?.get("height") as? Number)?.toFloat() ?: 1f).coerceIn(0f, 1f)
         return Ratio(width, height)
+    }
+
+    fun getOptionsOrientation(options: MutableMap<String, Any>?): Orientation {
+        return when (options?.get("orientation") as? String) {
+            "portrait" -> Orientation.PORTRAIT
+            "landscape-left" -> Orientation.LANDSCAPE_LEFT
+            "portrait-upside-down" -> Orientation.PORTRAIT_UPSIDE_DOWN
+            "landscape-right" -> Orientation.LANDSCAPE_RIGHT
+            else -> Orientation.PORTRAIT
+        }
     }
 
     fun getOptionsBarcodeFormats(options: MutableMap<String, Any>?): List<*> {
@@ -72,10 +98,57 @@ object ScannerUtils {
         }
     }
 
-    fun getImageSizeWithRotation(size: Size, rotationDegrees: Int): Size {
+    fun getImageSizeByRotation(size: Size, rotationDegrees: Int): Size {
         return when (rotationDegrees) {
             90, 270 -> Size(size.height, size.width)
             else -> size
+        }
+    }
+
+    // It can be used if you want to switch to using corners instead of frames in the future.
+    private fun getBoundingBoxFromCorners(barcode: Barcode): Rect? {
+        val corners = barcode.cornerPoints ?: return barcode.boundingBox
+        if (corners.isEmpty()) return barcode.boundingBox
+
+        val minX = corners.minOf { it.x }
+        val maxX = corners.maxOf { it.x }
+        val minY = corners.minOf { it.y }
+        val maxY = corners.maxOf { it.y }
+
+        return Rect(minX, minY, maxX, maxY)
+    }
+
+    private fun getBoxRatioByOrientation(box: Rect, size: Size, orientation: Orientation): BoxRatio {
+        val imageWidth = size.width.toDouble()
+        val imageHeight = size.height.toDouble()
+
+        // Normalizes bounding box to 0–1 range for React Native layout.
+        // Default portrait.
+        val leftRatio = box.left / imageWidth
+        val topRatio = box.top / imageHeight
+        val widthRatio = box.width() / imageWidth
+        val heightRatio = box.height() / imageHeight
+
+        return when (orientation) {
+            Orientation.PORTRAIT -> BoxRatio(leftRatio, topRatio, widthRatio, heightRatio)
+            Orientation.LANDSCAPE_RIGHT -> BoxRatio(
+                topRatio,
+                1 - leftRatio - widthRatio,
+                heightRatio,
+                widthRatio
+            )
+            Orientation.PORTRAIT_UPSIDE_DOWN -> BoxRatio(
+                1 - leftRatio - widthRatio,
+                1- topRatio - heightRatio,
+                widthRatio,
+                heightRatio
+            )
+            Orientation.LANDSCAPE_LEFT -> BoxRatio(
+                1 - topRatio - heightRatio,
+                leftRatio,
+                heightRatio,
+                widthRatio
+            )
         }
     }
 
@@ -101,35 +174,26 @@ object ScannerUtils {
         }
     }
 
-    fun formatBarcode(barcode: Barcode, size: Size): ReadableNativeMap {
+    fun formatBarcode(barcode: Barcode, size: Size, orientation: Orientation): ReadableNativeMap {
         val map = WritableNativeMap()
         val box = barcode.boundingBox
 
         if (box != null) {
-            val imageWidth = size.width.toDouble()
-            val imageHeight = size.height.toDouble()
-
-            val width = box.width()
-            val height = box.height()
-            val left = box.left
-            val top = box.top
-            val right = box.right
-            val bottom = box.bottom
+            val boxRatio = getBoxRatioByOrientation(box, size, orientation)
 
             // Raw values
-            map.putInt("width", width)
-            map.putInt("height", height)
-            map.putInt("left", left)
-            map.putInt("top", top)
-            map.putInt("right", right)
-            map.putInt("bottom", bottom)
+            map.putInt("width", box.width())
+            map.putInt("height", box.height())
+            map.putInt("left", box.left)
+            map.putInt("top", box.top)
+            map.putInt("right", box.right)
+            map.putInt("bottom", box.bottom)
 
             // Normalized values
-            // Normalizes bounding box to 0–1 range for React Native layout.
-            map.putDouble("leftRatio", left / imageWidth)
-            map.putDouble("topRatio", top / imageHeight)
-            map.putDouble("widthRatio", width / imageWidth)
-            map.putDouble("heightRatio", height / imageHeight)
+            map.putDouble("leftRatio", boxRatio.leftRatio)
+            map.putDouble("topRatio", boxRatio.topRatio)
+            map.putDouble("widthRatio", boxRatio.widthRatio)
+            map.putDouble("heightRatio", boxRatio.heightRatio)
         }
 
         val rawValue = barcode.rawValue

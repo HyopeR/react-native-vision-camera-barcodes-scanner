@@ -1,19 +1,17 @@
-import React, { forwardRef, useMemo } from 'react';
+import React, { forwardRef } from 'react';
 import {
   Camera as CameraVision,
   useFrameProcessor,
 } from 'react-native-vision-camera';
 import { useRunOnJS } from 'react-native-worklets-core';
-import { createBarcodeScannerPlugin } from './scanBarcodes';
+import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import type {
-  ScannerPlugin,
-  ScannerOptions,
   Barcode,
   CameraProps,
   Frame,
   ForwardedRef,
   ReadonlyFrameProcessor,
-} from './types';
+} from '../types';
 
 export const Camera = forwardRef(function Camera(
   props: CameraProps,
@@ -54,7 +52,3 @@ export const Camera = forwardRef(function Camera(
     </>
   );
 });
-
-export function useBarcodeScanner(options?: ScannerOptions): ScannerPlugin {
-  return useMemo(() => createBarcodeScannerPlugin(options), [options]);
-}

@@ -23,6 +23,7 @@ class VisionCameraBarcodesScannerModule(
     private val scannerBuilder: BarcodeScannerOptions.Builder = BarcodeScannerOptions.Builder()
     private val scannerBarcodeFormats = ScannerUtils.getOptionsBarcodeFormats(options)
     private val scannerRatio = ScannerUtils.getOptionsRatio(options)
+    private val scannerOrientation = ScannerUtils.getOptionsOrientation(options)
 
     init {
         val barcodeFormats = ScannerUtils.getSafeBarcodeFormats(scannerBarcodeFormats)
@@ -47,7 +48,7 @@ class VisionCameraBarcodesScannerModule(
 
             // Adjusts image size for portrait rotations (90 or 270 degrees).
             val imageSizeRaw = Size(image.width, image.height)
-            val imageSize = ScannerUtils.getImageSizeWithRotation(imageSizeRaw, frameImageRotationDegrees)
+            val imageSize = ScannerUtils.getImageSizeByRotation(imageSizeRaw, frameImageRotationDegrees)
 
             val array = WritableNativeArray()
             val task: Task<List<Barcode>> = scanner.process(image)
@@ -61,7 +62,7 @@ class VisionCameraBarcodesScannerModule(
                     barcodes
 
             for (barcode in barcodesFiltered) {
-                val map = ScannerUtils.formatBarcode(barcode, imageSize)
+                val map = ScannerUtils.formatBarcode(barcode, imageSize, scannerOrientation)
                 array.pushMap(map)
             }
             return array.toArrayList()

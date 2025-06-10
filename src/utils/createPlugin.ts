@@ -1,11 +1,9 @@
 import { VisionCameraProxy } from 'react-native-vision-camera';
-import type { Frame, ScannerOptions, ScannerPlugin, Barcode } from './types';
+import type { Barcode, Frame, ScannerOptions, ScannerPlugin } from '../types';
 
 const LINKING_ERROR = `Can't load plugin scanBarcodes.Try cleaning cache or reinstall plugin.`;
 
-export function createBarcodeScannerPlugin(
-  options?: ScannerOptions
-): ScannerPlugin {
+export function createPlugin(options?: ScannerOptions): ScannerPlugin {
   const optionsSafe = options || ({} as ScannerOptions);
 
   const plugin = VisionCameraProxy.initFrameProcessorPlugin(
