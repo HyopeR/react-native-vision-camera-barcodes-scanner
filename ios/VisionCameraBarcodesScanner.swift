@@ -3,131 +3,89 @@ import VisionCamera
 import MLKitVision
 import MLKitBarcodeScanning
 
-
 @objc(VisionCameraBarcodesScanner)
 public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
-    private var barcodeOptionsBuilder: BarcodeScannerOptions = BarcodeScannerOptions(formats: .all)
-    private var barcodeOptions: [Any] = []
+    private var scannerBuilder: BarcodeScannerOptions = BarcodeScannerOptions(formats: .all)
+    private var scannerBarcodeFormats: [Any] = []
+    private var scannerRatio: Ratio = Ratio(width: 1, height: 1)
+    private var scannerOrientation: UIDeviceOrientation = .portrait
 
     public override init(proxy: VisionCameraProxyHolder, options: [AnyHashable: Any]! = [:]) {
         super.init(proxy: proxy, options: options)
 
-        barcodeOptions = getSafeBarcodeOptions(options: options)
+        scannerBarcodeFormats = ScannerUtils.getOptionsBarcodeFormats(options: options)
+        scannerRatio = ScannerUtils.getOptionsRatio(options: options)
+        scannerOrientation = ScannerUtils.getOptionsOrientation(options: options)
 
-        let barcodeFormats = barcodeOptions.compactMap { format -> BarcodeFormat in
-            if let format = format as? String {
-                switch format {
-                case "code_128": return .code128
-                case "code_39": return .code39
-                case "code_93": return .code93
-                case "codabar": return .codaBar
-                case "ean_13": return .EAN13
-                case "ean_8": return .EAN8
-                case "itf": return .ITF
-                case "upc_e": return .UPCE
-                case "upc_a": return .UPCA
-                case "qr": return .qrCode
-                case "pdf_417": return .PDF417
-                case "aztec": return .aztec
-                case "data_matrix": return .dataMatrix
-                case "all": return .all
-                default: return .all
-                }
-            } else {
-                return .all
-            }
-        }
-
+        let barcodeFormats = ScannerUtils.getSafeBarcodeFormats(formats: scannerBarcodeFormats)
         if barcodeFormats.contains(.all) {
-            barcodeOptionsBuilder = BarcodeScannerOptions(formats: .all)
+            scannerBuilder = BarcodeScannerOptions(formats: .all)
         } else {
-            barcodeOptionsBuilder = BarcodeScannerOptions(formats: BarcodeFormat(barcodeFormats))
+            scannerBuilder = BarcodeScannerOptions(formats: BarcodeFormat(barcodeFormats))
         }
     }
 
-    private func getSafeBarcodeOptions(options: [AnyHashable: Any]?) -> [Any] {
-        if let values = options?["options"] as? [Any] {
-            if values.isEmpty {
-                return ["all"]
-            } else {
-                return values
-            }
-        } else {
-            return ["all"]
-        }
-    }
+    /*
+     The iOS camera detects the image as "landscapeRight" by default.
+     frame.orientation is a value that tells us how to convert the image to "portrait" mode.
+     frame.orientation does not directly reflect the orientation of the image!
 
-    public override func callback(_ frame: Frame,withArguments arguments: [AnyHashable: Any]?) -> Any {
-        var data:[Any] = []
-        let buffer = frame.buffer
-        let image = VisionImage(buffer: buffer);
-        image.orientation = getOrientation(orientation: frame.orientation)
-        let barcodeScanner = BarcodeScanner.barcodeScanner(options: barcodeOptionsBuilder)
+     In rotation operations; the device's own "front face" is taken as reference.
+     The screen is facing you and the rotation is done by taking the top of the device as reference.
+
+     Image Orientation (Default)    Phone Orientation    Frame Orientation    Description
+     landscapeRight                 portrait             .right               Rotate 90° CW
+     landscapeRight                 landscapeRight       .up                  Rotate Not
+     landscapeRight                 landscapeLeft        .down                Rotate 180°
+     landscapeRight                 portraitUpsideDown   .left                Rotate 90° CCW
+     */
+    public override func callback(_ frame: Frame, withArguments arguments: [AnyHashable: Any]?) -> Any {
+        let scanner = BarcodeScanner.barcodeScanner(options: scannerBuilder)
+
+        let imageBuffer = frame.buffer
+        guard let imagePixelBuffer = CMSampleBufferGetImageBuffer(imageBuffer) else { return [] }
+
+        let image = VisionImage(buffer: imageBuffer)
+        image.orientation = ScannerUtils.getSafeRotation(rotation: frame.orientation)
+        let imageWidth = CVPixelBufferGetWidth(imagePixelBuffer)
+        let imageHeight = CVPixelBufferGetHeight(imagePixelBuffer)
+
+        // Adjusts image size for portrait rotations (.left or .right)
+        let imageSizeRaw = Size(width: imageWidth, height: imageHeight)
+        let imageSize = ScannerUtils.getImageSizeByRotation(size: imageSizeRaw, rotation: image.orientation)
+
+        var array:[Any] = []
         let dispatchGroup = DispatchGroup()
-        dispatchGroup.enter()
 
-        barcodeScanner.process(image) {
-            barcodes,
-            error in
-            defer {
-                dispatchGroup.leave()
-            }
+        dispatchGroup.enter()
+        scanner.process(image) { barcodes, error in
+            defer { dispatchGroup.leave() }
             guard error == nil, let barcodes = barcodes else { return }
-            for barcode in barcodes {
-                let objData = VisionCameraBarcodesScanner.processData(barcode: barcode)
-                data.append(objData)
+
+            let barcodesFiltered: [Barcode]
+            if self.scannerRatio.width != 1.0 || self.scannerRatio.height != 1.0 {
+                barcodesFiltered = ScannerUtils.filterBarcodes(
+                    barcodes: barcodes,
+                    size: imageSize,
+                    ratio: self.scannerRatio,
+                    rotation: image.orientation
+                )
+            } else {
+                barcodesFiltered = barcodes
+            }
+
+            for barcode in barcodesFiltered {
+                let map = ScannerUtils.formatBarcode(
+                    barcode: barcode,
+                    size: imageSize,
+                    orientation: self.scannerOrientation,
+                    rotation: image.orientation
+                )
+                array.append(map)
             }
         }
         dispatchGroup.wait()
-        return data
+
+        return array
     }
-
-    private func getOrientation(orientation: UIImage.Orientation) -> UIImage.Orientation {
-        switch orientation {
-        case .up:
-          return .up
-        case .left:
-          return .right
-        case .down:
-          return .down
-        case .right:
-          return .left
-        default:
-          return .up
-        }
-    }
-
-    static func processData(barcode:Barcode) -> [String:Any]{
-         var objData : [String:Any] = [:]
-            objData["height"] = barcode.frame.height
-            objData["width"] = barcode.frame.width
-            objData["top"] = barcode.frame.minY
-            objData["bottom"] = barcode.frame.maxY
-            objData["left"] = barcode.frame.minX
-            objData["right"] = barcode.frame.maxX
-            let displayValue = barcode.displayValue
-            objData["displayValue"] = displayValue
-            let rawValue = barcode.rawValue
-            objData["rawValue"] = rawValue
-
-            let valueType = barcode.valueType
-            switch valueType {
-            case .wiFi:
-                let ssid = barcode.wifi?.ssid
-                objData["ssid"] = ssid
-                let password = barcode.wifi?.password
-                objData["password"] = password
-                let encryptionType = barcode.wifi?.type
-                objData["encryptionType"] = encryptionType
-            case .URL:
-                let title = barcode.url!.title
-                objData["title"] = title
-                let url = barcode.url!.url
-                objData["url"] = url
-            default:
-                break;
-            }
-        return objData
-    }
-
   }
