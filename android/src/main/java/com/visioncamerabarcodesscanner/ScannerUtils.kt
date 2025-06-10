@@ -105,6 +105,19 @@ object ScannerUtils {
         }
     }
 
+    // It can be used if you want to switch to using corners instead of frames in the future.
+    private fun getBoundingBoxFromCorners(barcode: Barcode): Rect? {
+        val corners = barcode.cornerPoints ?: return barcode.boundingBox
+        if (corners.isEmpty()) return barcode.boundingBox
+
+        val minX = corners.minOf { it.x }
+        val maxX = corners.maxOf { it.x }
+        val minY = corners.minOf { it.y }
+        val maxY = corners.maxOf { it.y }
+
+        return Rect(minX, minY, maxX, maxY)
+    }
+
     private fun getBoxRatioByOrientation(box: Rect, size: Size, orientation: Orientation): BoxRatio {
         val imageWidth = size.width.toDouble()
         val imageHeight = size.height.toDouble()

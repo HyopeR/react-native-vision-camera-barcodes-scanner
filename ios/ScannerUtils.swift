@@ -119,13 +119,36 @@ class ScannerUtils {
         }
     }
 
+    // It can be used if you want to switch to using corners instead of frames in the future.
+    static func getRectFromCorners(barcode: Barcode) -> CGRect {
+        guard let corners = barcode.cornerPoints, corners.count > 0 else {
+            return barcode.frame
+        }
+
+        let points = corners.map { $0.cgPointValue }
+        let xs = points.map { $0.x }
+        let ys = points.map { $0.y }
+
+        guard let minX = xs.min(),
+              let maxX = xs.max(),
+              let minY = ys.min(),
+              let maxY = ys.max() else {
+            return barcode.frame
+        }
+
+        return CGRect(
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY
+        )
+    }
+
     // This transformation is necessary.
     // Because the default image always comes as landscapeRight.
     // On the Swift side, MLKit does not produce coordinates for a different orientation.
     // This step is done automatically on the Kotlin side.
-    static func getFrameRectByRotation(barcode:Barcode, size: Size, rotation: UIImage.Orientation,) -> CGRect {
-        let f = barcode.frame
-
+    static func getFrameRectByRotation(rect: CGRect, size: Size, rotation: UIImage.Orientation,) -> CGRect {
         // By default, the camera captures data in Landscape mode.
         // Here it should always be width > height.
         // imageSize to imageRawSize conversion.
@@ -134,30 +157,30 @@ class ScannerUtils {
 
         switch rotation {
         case .up:
-            return f
+            return rect
         case .left:
             return CGRect(
-                x: f.minY,
-                y: imageWidth - f.maxX,
-                width: f.height,
-                height: f.width
+                x: rect.minY,
+                y: imageWidth - rect.maxX,
+                width: rect.height,
+                height: rect.width
             )
         case .right:
             return CGRect(
-                x: imageHeight - f.maxY,
-                y: f.minX,
-                width: f.height,
-                height: f.width
+                x: imageHeight - rect.maxY,
+                y: rect.minX,
+                width: rect.height,
+                height: rect.width
             )
         case .down:
             return CGRect(
-                x: imageWidth - f.maxX,
-                y: imageHeight - f.maxY,
-                width: f.width,
-                height: f.height
+                x: imageWidth - rect.maxX,
+                y: imageHeight - rect.maxY,
+                width: rect.width,
+                height: rect.height
             )
         default:
-            return f
+            return rect
         }
     }
 
@@ -225,7 +248,7 @@ class ScannerUtils {
         let scanBottom = (imageHeight + scanHeight) / 2.0
 
         return barcodes.filter { barcode in
-            let rect = self.getFrameRectByRotation(barcode: barcode, size: size, rotation: rotation)
+            let rect = self.getFrameRectByRotation(rect: barcode.frame, size: size, rotation: rotation)
             let box = self.getBoundingBoxOnRect(rect: rect)
             return box.left >= scanLeft &&
                    box.top >= scanTop &&
@@ -241,7 +264,7 @@ class ScannerUtils {
         rotation: UIImage.Orientation
     ) -> [String:Any] {
         var map : [String:Any] = [:]
-        let rect = self.getFrameRectByRotation(barcode: barcode, size: size, rotation: rotation)
+        let rect = self.getFrameRectByRotation(rect: barcode.frame, size: size, rotation: rotation)
         let box = self.getBoundingBoxOnRect(rect: rect)
         let boxRatio = self.getBoxRatioByOrientation(box: box, size: size, orientation: orientation)
 
