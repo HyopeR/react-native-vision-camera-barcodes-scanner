@@ -17,6 +17,7 @@ class ImageScanner: NSObject {
         let scannerBarcodeFormats = ScannerUtils.getOptionsBarcodeFormats(options: options)
         let scannerRatio = ScannerUtils.getOptionsRatio(options: options)
         let scannerOrientation = ScannerUtils.getOptionsOrientation(options: options)
+        let scannerViewSize = ScannerUtils.getOptionsViewSize(options: options)
 
         let barcodeFormats = ScannerUtils.getSafeBarcodeFormats(formats: scannerBarcodeFormats)
         if barcodeFormats.contains(.all) {
@@ -41,6 +42,7 @@ class ImageScanner: NSObject {
         let image = VisionImage(image: imageUI)
         image.orientation = imageUI.imageOrientation
         let imageSize = Size(width: imageCG.width, height: imageCG.height)
+        let viewSize = ScannerUtils.getSafeViewSize(imageSize: imageSize, viewSize: scannerViewSize)
 
         do {
             let barcodes = try scanner.results(in: image)
@@ -48,9 +50,10 @@ class ImageScanner: NSObject {
             if scannerRatio.width != 1.0 || scannerRatio.height != 1.0 {
                 barcodesFiltered = ScannerUtils.filterBarcodes(
                     barcodes: barcodes,
-                    size: imageSize,
+                    imageSize: imageSize,
+                    viewSize: viewSize,
                     ratio: scannerRatio,
-                    rotation: image.orientation
+                    imageRotation: image.orientation
                 )
             } else {
                 barcodesFiltered = barcodes
@@ -59,9 +62,10 @@ class ImageScanner: NSObject {
             for barcode in barcodesFiltered {
                 let map = ScannerUtils.formatBarcode(
                     barcode: barcode,
-                    size: imageSize,
+                    imageSize: imageSize,
+                    viewSize: viewSize,
                     orientation: scannerOrientation,
-                    rotation: image.orientation
+                    imageRotation: image.orientation
                 )
                 array.append(map)
             }

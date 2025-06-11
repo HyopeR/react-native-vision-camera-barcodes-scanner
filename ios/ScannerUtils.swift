@@ -25,6 +25,16 @@ struct BoxRatio {
     }
 }
 
+struct Scaling {
+    let scale: CGFloat
+    let dx: CGFloat
+    let dy: CGFloat
+
+    func destructured() -> (CGFloat, CGFloat, CGFloat) {
+        return (scale, dx, dy)
+    }
+}
+
 struct BoundingBox {
     var width: CGFloat
     var height: CGFloat
@@ -66,6 +76,15 @@ class ScannerUtils {
         }
     }
 
+    static func getOptionsViewSize(options: [AnyHashable: Any]?) -> Size? {
+        guard let viewSize = options?["viewSize"] as? [String: Any],
+              let width = viewSize["width"] as? NSNumber,
+              let height = viewSize["height"] as? NSNumber else {
+            return nil
+        }
+        return Size(width: width.intValue, height: height.intValue)
+    }
+
     static func getOptionsBarcodeFormats(options: [AnyHashable: Any]?) -> [Any] {
         if let formats = options?["formats"] as? [Any], !formats.isEmpty {
             return formats
@@ -100,8 +119,20 @@ class ScannerUtils {
         }
     }
 
-    static func getSafeRotation(rotation: UIImage.Orientation) -> UIImage.Orientation {
-        switch rotation {
+    // ViewSize is used for scaling in the code.
+    // The UI side should always be assumed as portrait.
+    static func getSafeViewSize(imageSize: Size, viewSize: Size?) -> Size {
+        if let viewSize = viewSize {
+            let width = min(viewSize.width, viewSize.height)
+            let height = max(viewSize.width, viewSize.height)
+            return Size(width: width, height: height)
+        } else {
+            return imageSize
+        }
+    }
+
+    static func getImageRotation(imageRotation: UIImage.Orientation) -> UIImage.Orientation {
+        switch imageRotation {
             case .up: return .up
             case .left: return .right
             case .down: return .down
@@ -110,52 +141,73 @@ class ScannerUtils {
         }
     }
 
-    static func getImageSizeByRotation(size: Size, rotation: UIImage.Orientation) -> Size {
-        switch rotation {
+    static func getImageSizeBasedOnRotation(imageSizeRaw: Size, imageRotation: UIImage.Orientation) -> Size {
+        switch imageRotation {
             case .left, .leftMirrored, .right, .rightMirrored:
-                return Size(width: size.height, height: size.width)
+                return Size(width: imageSizeRaw.height, height: imageSizeRaw.width)
             default:
-                return size
+                return imageSizeRaw
         }
     }
 
-    // It can be used if you want to switch to using corners instead of frames in the future.
-    static func getRectFromCorners(barcode: Barcode) -> CGRect {
-        guard let corners = barcode.cornerPoints, corners.count > 0 else {
-            return barcode.frame
+    static private func getImageScalingBasedOnViewSize(imageSize: Size, viewSize: Size) -> Scaling {
+        let imageWidth = CGFloat(imageSize.width)
+        let imageHeight = CGFloat(imageSize.height)
+        let imageAspect = imageWidth / imageHeight
+
+        let viewWidth = CGFloat(viewSize.width)
+        let viewHeight = CGFloat(viewSize.height)
+        let viewAspect = viewWidth / viewHeight
+
+        let scale: CGFloat
+        let scaledImageWidth: CGFloat
+        let scaledImageHeight: CGFloat
+        let dx: CGFloat
+        let dy: CGFloat
+        if imageAspect > viewAspect {
+            // Image is wider -> crop left/right
+            scale = viewHeight / imageHeight
+            scaledImageWidth = imageWidth * scale
+            scaledImageHeight = viewHeight
+            dx = (scaledImageWidth - viewWidth) / 2.0
+            dy = 0.0
+        } else if viewAspect > imageAspect {
+            // Image is taller → crop top/bottom
+            scale = viewWidth / imageWidth
+            scaledImageWidth = viewWidth
+            scaledImageHeight = imageHeight * scale
+            dx = 0.0
+            dy = (scaledImageHeight - viewHeight) / 2.0
+        } else {
+            // Full compatibility -> crop nothing
+            // Default if user does not provide viewSize value
+            scale = 1.0
+            scaledImageWidth = viewWidth
+            scaledImageHeight = viewHeight
+            dx = 0.0
+            dy = 0.0
         }
 
-        let points = corners.map { $0.cgPointValue }
-        let xs = points.map { $0.x }
-        let ys = points.map { $0.y }
-
-        guard let minX = xs.min(),
-              let maxX = xs.max(),
-              let minY = ys.min(),
-              let maxY = ys.max() else {
-            return barcode.frame
-        }
-
-        return CGRect(
-            x: minX,
-            y: minY,
-            width: maxX - minX,
-            height: maxY - minY
-        )
+        return Scaling(scale: scale, dx: dx, dy: dy)
     }
+
 
     // This transformation is necessary.
     // Because the default image always comes as landscapeRight.
     // On the Swift side, MLKit does not produce coordinates for a different orientation.
     // This step is done automatically on the Kotlin side.
-    static func getFrameRectByRotation(rect: CGRect, size: Size, rotation: UIImage.Orientation,) -> CGRect {
+    static func getRectBasedOnRotation(
+        rect: CGRect,
+        imageSize: Size,
+        imageRotation: UIImage.Orientation
+    ) -> CGRect {
         // By default, the camera captures data in Landscape mode.
         // Here it should always be width > height.
         // imageSize to imageRawSize conversion.
-        let imageWidth = CGFloat(max(size.width, size.height))
-        let imageHeight = CGFloat(min(size.width, size.height))
+        let imageWidth = CGFloat(max(imageSize.width, imageSize.height))
+        let imageHeight = CGFloat(min(imageSize.width, imageSize.height))
 
-        switch rotation {
+        switch imageRotation {
         case .up:
             return rect
         case .left:
@@ -184,7 +236,7 @@ class ScannerUtils {
         }
     }
 
-    static func getBoundingBoxOnRect(rect: CGRect) -> BoundingBox {
+    static func getBoundingBoxFromRect(rect: CGRect) -> BoundingBox {
         return BoundingBox(
             width: rect.width,
             height: rect.height,
@@ -195,16 +247,19 @@ class ScannerUtils {
         )
     }
 
-    static func getBoxRatioByOrientation(box: BoundingBox, size: Size, orientation: UIDeviceOrientation) -> BoxRatio {
-        let imageWidth = CGFloat(size.width)
-        let imageHeight = CGFloat(size.height)
+    static func getBoxRatioBasedOnOrientationForUI(
+        boxScaled: BoundingBox,
+        viewSize: Size,
+        orientation: UIDeviceOrientation
+    ) -> BoxRatio {
+        let viewWidth = CGFloat(viewSize.width)
+        let viewHeight = CGFloat(viewSize.height)
 
-        // Normalizes bounding box to 0–1 range for React Native layout.
-        // Default portait.
-        let leftRatio = box.left / imageWidth
-        let topRatio = box.top / imageHeight
-        let widthRatio = box.width / imageWidth
-        let heightRatio = box.height / imageHeight
+        // Normalize to viewSize
+        let leftRatio = min(max(boxScaled.left / viewWidth, 0.0), 1.0)
+        let topRatio = min(max(boxScaled.top / viewHeight, 0.0), 1.0)
+        let widthRatio = min(max(boxScaled.width / viewWidth, 0.0), 1.0 - leftRatio)
+        let heightRatio = min(max(boxScaled.height / viewHeight, 0.0), 1.0 - topRatio)
 
         switch orientation {
         case .portrait:
@@ -235,46 +290,81 @@ class ScannerUtils {
         }
     }
 
-    static func filterBarcodes(barcodes: [Barcode], size: Size, ratio: Ratio, rotation: UIImage.Orientation) -> [Barcode] {
-        let imageWidth = CGFloat(size.width)
-        let imageHeight = CGFloat(size.height)
+    static func scaleBoxBasedOnViewSize(box: BoundingBox, imageSize: Size, viewSize: Size) -> BoundingBox {
+        let imageScaling = getImageScalingBasedOnViewSize(imageSize: imageSize, viewSize: viewSize)
+        let (scale, dx, dy) = imageScaling.destructured()
 
-        let scanWidth = ratio.width * imageWidth
-        let scanHeight = ratio.height * imageHeight
+        let left = CGFloat(box.left) * scale - dx
+        let top = CGFloat(box.top) * scale - dy
+        let right = CGFloat(box.right) * scale - dx
+        let bottom = CGFloat(box.bottom) * scale - dy
+        let width = right - left
+        let height = bottom - top
 
-        let scanLeft = (imageWidth - scanWidth) / 2.0
-        let scanTop = (imageHeight - scanHeight) / 2.0
-        let scanRight = (imageWidth + scanWidth) / 2.0
-        let scanBottom = (imageHeight + scanHeight) / 2.0
+        return BoundingBox(
+            width: width,
+            height: height,
+            left: left,
+            top: top,
+            right: right,
+            bottom: bottom
+        )
+    }
+
+    static func filterBarcodes(
+        barcodes: [Barcode],
+        imageSize: Size,
+        viewSize: Size,
+        ratio: Ratio,
+        imageRotation: UIImage.Orientation
+    ) -> [Barcode] {
+        let viewWidth = CGFloat(viewSize.width)
+        let viewHeight = CGFloat(viewSize.height)
+
+        let scanViewWidth = ratio.width * viewWidth
+        let scanViewHeight = ratio.height * viewHeight
+
+        // Calculate the current scan area for viewSize.
+        let scanLeft = (viewWidth - scanViewWidth) / 2.0
+        let scanTop = (viewHeight - scanViewHeight) / 2.0
+        let scanRight = scanLeft + scanViewWidth
+        let scanBottom = scanTop + scanViewHeight
 
         return barcodes.filter { barcode in
-            let rect = self.getFrameRectByRotation(rect: barcode.frame, size: size, rotation: rotation)
-            let box = self.getBoundingBoxOnRect(rect: rect)
-            return box.left >= scanLeft &&
-                   box.top >= scanTop &&
-                   box.right <= scanRight &&
-                   box.bottom <= scanBottom
+            let rect = self.getRectBasedOnRotation(rect: barcode.frame, imageSize: imageSize, imageRotation: imageRotation)
+            let box = self.getBoundingBoxFromRect(rect: rect)
+            let boxScaled = self.scaleBoxBasedOnViewSize(box: box, imageSize: imageSize, viewSize: viewSize)
+            return boxScaled.left >= scanLeft &&
+                   boxScaled.top >= scanTop &&
+                   boxScaled.right <= scanRight &&
+                   boxScaled.bottom <= scanBottom
         }
     }
 
     static func formatBarcode(
         barcode: Barcode,
-        size: Size,
+        imageSize: Size,
+        viewSize: Size,
         orientation: UIDeviceOrientation,
-        rotation: UIImage.Orientation
+        imageRotation: UIImage.Orientation
     ) -> [String:Any] {
         var map : [String:Any] = [:]
-        let rect = self.getFrameRectByRotation(rect: barcode.frame, size: size, rotation: rotation)
-        let box = self.getBoundingBoxOnRect(rect: rect)
-        let boxRatio = self.getBoxRatioByOrientation(box: box, size: size, orientation: orientation)
+        let rect = self.getRectBasedOnRotation(rect: barcode.frame, imageSize: imageSize, imageRotation: imageRotation)
+        let box = self.getBoundingBoxFromRect(rect: rect)
+        let boxScaled = self.scaleBoxBasedOnViewSize(box: box, imageSize: imageSize, viewSize: viewSize)
+        let boxRatio = self.getBoxRatioBasedOnOrientationForUI(
+            boxScaled: boxScaled,
+            viewSize: viewSize,
+            orientation: orientation
+        )
 
         // Raw values
-        map["width"] = box.width
-        map["height"] = box.height
-        map["left"] = box.left
-        map["top"] = box.top
-        map["right"] = box.right
-        map["bottom"] = box.bottom
+        map["width"] = boxScaled.width
+        map["height"] = boxScaled.height
+        map["left"] = boxScaled.left
+        map["top"] = boxScaled.top
+        map["right"] = boxScaled.right
+        map["bottom"] = boxScaled.bottom
 
         // Normalized values
         map["leftRatio"] = boxRatio.leftRatio
