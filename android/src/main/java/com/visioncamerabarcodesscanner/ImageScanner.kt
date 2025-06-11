@@ -30,6 +30,7 @@ class ImageScanner(reactContext: ReactApplicationContext) : ReactContextBaseJava
         val scannerBarcodeFormats = ScannerUtils.getOptionsBarcodeFormats(options)
         val scannerRatio = ScannerUtils.getOptionsRatio(options)
         val scannerOrientation = ScannerUtils.getOptionsOrientation(options)
+        val scannerViewSize = ScannerUtils.getOptionsViewSize(options)
 
         val barcodeFormats = ScannerUtils.getSafeBarcodeFormats(scannerBarcodeFormats)
         if (barcodeFormats.contains(FORMAT_ALL_FORMATS)) {
@@ -47,6 +48,7 @@ class ImageScanner(reactContext: ReactApplicationContext) : ReactContextBaseJava
         // Loads image and applies EXIF rotation. width/height are already corrected.
         val image = InputImage.fromFilePath(this.reactApplicationContext, imageUri)
         val imageSize = Size(image.width, image.height)
+        val viewSize = ScannerUtils.getSafeViewSize(imageSize, scannerViewSize)
 
         val task: Task<List<Barcode>> = scanner.process(image)
         val barcodes: List<Barcode> = Tasks.await(task)
@@ -54,12 +56,12 @@ class ImageScanner(reactContext: ReactApplicationContext) : ReactContextBaseJava
         // Filter barcodes if scanning ratio is restricted.
         val barcodesFiltered =
             if (scannerRatio.width != 1f || scannerRatio.height != 1f)
-                ScannerUtils.filterBarcodes(barcodes, imageSize, scannerRatio)
+                ScannerUtils.filterBarcodes(barcodes, imageSize, viewSize, scannerRatio)
             else
                 barcodes
 
         for (barcode in barcodesFiltered) {
-            val map = ScannerUtils.formatBarcode(barcode, imageSize, scannerOrientation)
+            val map = ScannerUtils.formatBarcode(barcode, imageSize, viewSize, scannerOrientation)
             array.pushMap(map)
         }
         promise.resolve(array)
