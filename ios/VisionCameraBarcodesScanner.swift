@@ -9,6 +9,7 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
     private var scannerBarcodeFormats: [Any] = []
     private var scannerRatio: Ratio = Ratio(width: 1, height: 1)
     private var scannerOrientation: UIDeviceOrientation = .portrait
+    private var scannerViewSize: Size? = nil
 
     public override init(proxy: VisionCameraProxyHolder, options: [AnyHashable: Any]! = [:]) {
         super.init(proxy: proxy, options: options)
@@ -16,6 +17,7 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
         scannerBarcodeFormats = ScannerUtils.getOptionsBarcodeFormats(options: options)
         scannerRatio = ScannerUtils.getOptionsRatio(options: options)
         scannerOrientation = ScannerUtils.getOptionsOrientation(options: options)
+        scannerViewSize = ScannerUtils.getOptionsViewSize(options: options)
 
         let barcodeFormats = ScannerUtils.getSafeBarcodeFormats(formats: scannerBarcodeFormats)
         if barcodeFormats.contains(.all) {
@@ -46,13 +48,14 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
         guard let imagePixelBuffer = CMSampleBufferGetImageBuffer(imageBuffer) else { return [] }
 
         let image = VisionImage(buffer: imageBuffer)
-        image.orientation = ScannerUtils.getSafeRotation(rotation: frame.orientation)
+        image.orientation = ScannerUtils.getImageRotation(imageRotation: frame.orientation)
         let imageWidth = CVPixelBufferGetWidth(imagePixelBuffer)
         let imageHeight = CVPixelBufferGetHeight(imagePixelBuffer)
 
         // Adjusts image size for portrait rotations (.left or .right)
         let imageSizeRaw = Size(width: imageWidth, height: imageHeight)
-        let imageSize = ScannerUtils.getImageSizeByRotation(size: imageSizeRaw, rotation: image.orientation)
+        let imageSize = ScannerUtils.getImageSizeBasedOnRotation(imageSizeRaw: imageSizeRaw, imageRotation: image.orientation)
+        let viewSize = ScannerUtils.getSafeViewSize(imageSize: imageSize, viewSize: scannerViewSize)
 
         var array:[Any] = []
         let dispatchGroup = DispatchGroup()
@@ -66,9 +69,10 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
             if self.scannerRatio.width != 1.0 || self.scannerRatio.height != 1.0 {
                 barcodesFiltered = ScannerUtils.filterBarcodes(
                     barcodes: barcodes,
-                    size: imageSize,
+                    imageSize: imageSize,
+                    viewSize: viewSize,
                     ratio: self.scannerRatio,
-                    rotation: image.orientation
+                    imageRotation: image.orientation
                 )
             } else {
                 barcodesFiltered = barcodes
@@ -77,9 +81,10 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
             for barcode in barcodesFiltered {
                 let map = ScannerUtils.formatBarcode(
                     barcode: barcode,
-                    size: imageSize,
+                    imageSize: imageSize,
+                    viewSize: viewSize,
                     orientation: self.scannerOrientation,
-                    rotation: image.orientation
+                    imageRotation: image.orientation
                 )
                 array.append(map)
             }

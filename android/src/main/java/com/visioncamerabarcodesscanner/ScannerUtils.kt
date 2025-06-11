@@ -1,6 +1,7 @@
 package com.visioncamerabarcodesscanner
 
 import android.graphics.Rect
+import android.graphics.RectF
 
 import com.facebook.react.bridge.ReadableNativeMap
 import com.facebook.react.bridge.WritableNativeMap
@@ -38,11 +39,17 @@ data class BoxRatio(
     val heightRatio: Double,
 )
 
+data class Scaling(
+    val scale: Double,
+    val dx: Double,
+    val dy: Double,
+)
+
 enum class Orientation (val value: String) {
     PORTRAIT("portrait"),
     LANDSCAPE_RIGHT("landscape-right"),
     PORTRAIT_UPSIDE_DOWN("portrait-upside-down"),
-    LANDSCAPE_LEFT("landscape-left");
+    LANDSCAPE_LEFT("landscape-left"),
 }
 
 object ScannerUtils {
@@ -60,6 +67,17 @@ object ScannerUtils {
             "portrait-upside-down" -> Orientation.PORTRAIT_UPSIDE_DOWN
             "landscape-right" -> Orientation.LANDSCAPE_RIGHT
             else -> Orientation.PORTRAIT
+        }
+    }
+
+    fun getOptionsViewSize(options: MutableMap<String, Any>?): Size? {
+        val viewSize = options?.get("viewSize") as? Map<*, *>
+        val width = (viewSize?.get("width") as? Number)?.toInt()
+        val height = (viewSize?.get("height") as? Number)?.toInt()
+        return if (width != null && height != null) {
+            Size(width, height)
+        } else {
+            null
         }
     }
 
@@ -98,36 +116,79 @@ object ScannerUtils {
         }
     }
 
-    fun getImageSizeByRotation(size: Size, rotationDegrees: Int): Size {
-        return when (rotationDegrees) {
-            90, 270 -> Size(size.height, size.width)
-            else -> size
+    // ViewSize is used for scaling in the code.
+    // The UI side should always be assumed as portrait.
+    fun getSafeViewSize(imageSize: Size, viewSize: Size?): Size {
+        if (viewSize != null) {
+            val width = minOf(viewSize.width, viewSize.height)
+            val height = maxOf(viewSize.width, viewSize.height)
+            return Size(width, height)
+        } else {
+            return imageSize
         }
     }
 
-    // It can be used if you want to switch to using corners instead of frames in the future.
-    private fun getBoundingBoxFromCorners(barcode: Barcode): Rect? {
-        val corners = barcode.cornerPoints ?: return barcode.boundingBox
-        if (corners.isEmpty()) return barcode.boundingBox
-
-        val minX = corners.minOf { it.x }
-        val maxX = corners.maxOf { it.x }
-        val minY = corners.minOf { it.y }
-        val maxY = corners.maxOf { it.y }
-
-        return Rect(minX, minY, maxX, maxY)
+    fun getImageSizeBasedOnRotation(imageSizeRaw: Size, imageRotationDegrees: Int): Size {
+        return when (imageRotationDegrees) {
+            90, 270 -> Size(imageSizeRaw.height, imageSizeRaw.width)
+            else -> imageSizeRaw
+        }
     }
 
-    private fun getBoxRatioByOrientation(box: Rect, size: Size, orientation: Orientation): BoxRatio {
-        val imageWidth = size.width.toDouble()
-        val imageHeight = size.height.toDouble()
+    private fun getImageScalingBasedOnViewSize(imageSize: Size, viewSize: Size): Scaling {
+        val imageWidth = imageSize.width.toDouble()
+        val imageHeight = imageSize.height.toDouble()
+        val imageAspect = imageWidth / imageHeight
 
-        // Normalizes bounding box to 0–1 range for React Native layout.
-        // Default portrait.
-        val leftRatio = box.left / imageWidth
-        val topRatio = box.top / imageHeight
-        val widthRatio = box.width() / imageWidth
-        val heightRatio = box.height() / imageHeight
+        val viewWidth = viewSize.width.toDouble()
+        val viewHeight = viewSize.height.toDouble()
+        val viewAspect = viewWidth / viewHeight
+
+        val scale: Double
+        val scaledImageWidth: Double
+        val scaledImageHeight: Double
+        val dx: Double
+        val dy: Double
+        if (imageAspect > viewAspect) {
+            // Image is wider -> crop left/right
+            scale = viewHeight / imageHeight
+            scaledImageWidth = imageWidth * scale
+            scaledImageHeight = viewHeight
+            dx = (scaledImageWidth - viewWidth) / 2.0
+            dy = 0.0
+        } else if (viewAspect > imageAspect) {
+            // Image is taller → crop top/bottom
+            scale = viewWidth / imageWidth
+            scaledImageWidth = viewWidth
+            scaledImageHeight = imageHeight * scale
+            dx = 0.0
+            dy = (scaledImageHeight - viewHeight) / 2.0
+        } else {
+            // Full compatibility -> crop nothing
+            // Default if user does not provide viewSize value
+            scale = 1.0
+            scaledImageWidth = viewWidth
+            scaledImageHeight = viewHeight
+            dx = 0.0
+            dy = 0.0
+        }
+
+        return Scaling(scale, dx, dy)
+    }
+
+    private fun getBoxRatioBasedOnOrientationForUI(
+        boxScaled: RectF,
+        viewSize: Size,
+        orientation: Orientation
+    ): BoxRatio {
+        val viewWidth = viewSize.width.toDouble()
+        val viewHeight = viewSize.height.toDouble()
+
+        // Normalize to viewSize
+        val leftRatio = (boxScaled.left / viewWidth).coerceIn(0.0, 1.0)
+        val topRatio = (boxScaled.top / viewHeight).coerceIn(0.0, 1.0)
+        val widthRatio = (boxScaled.width() / viewWidth).coerceIn(0.0, 1.0 - leftRatio)
+        val heightRatio = (boxScaled.height() / viewHeight).coerceIn(0.0, 1.0 - topRatio)
 
         return when (orientation) {
             Orientation.PORTRAIT -> BoxRatio(leftRatio, topRatio, widthRatio, heightRatio)
@@ -152,48 +213,70 @@ object ScannerUtils {
         }
     }
 
-    fun filterBarcodes(barcodes: List<Barcode>, size: Size, ratio: Ratio): List<Barcode> {
-        val imageWidth = size.width
-        val imageHeight = size.height
+    private fun scaleBoxBasedOnViewSize(box: Rect, imageSize: Size, viewSize: Size): RectF {
+        val (scale, dx, dy) = getImageScalingBasedOnViewSize(imageSize, viewSize)
+        return RectF(
+            (box.left * scale - dx).toFloat(),
+            (box.top * scale - dy).toFloat(),
+            (box.right * scale - dx).toFloat(),
+            (box.bottom * scale - dy).toFloat()
+        )
+    }
 
-        val scanWidth = ratio.width * imageWidth
-        val scanHeight = ratio.height * imageHeight
+    fun filterBarcodes(
+        barcodes: List<Barcode>,
+        imageSize: Size,
+        viewSize: Size,
+        ratio: Ratio
+    ): List<Barcode> {
+        val viewWidth = viewSize.width.toFloat()
+        val viewHeight = viewSize.height.toFloat()
 
-        val scanLeft = ((imageWidth - scanWidth) / 2f).toInt()
-        val scanTop = ((imageHeight - scanHeight) / 2f).toInt()
-        val scanRight = ((imageWidth + scanWidth) / 2f).toInt()
-        val scanBottom = ((imageHeight + scanHeight) / 2f).toInt()
+        val scanViewWidth = ratio.width * viewWidth
+        val scanViewHeight = ratio.height * viewHeight
+
+        // Calculate the current scan area for viewSize.
+        val scanLeft = (viewWidth - scanViewWidth) / 2
+        val scanTop = (viewHeight - scanViewHeight) / 2
+        val scanRight = scanLeft + scanViewWidth
+        val scanBottom = scanTop + scanViewHeight
 
         return barcodes.filter { barcode ->
-            val box = barcode.boundingBox
-            box != null &&
-            box.left >= scanLeft &&
-            box.top >= scanTop &&
-            box.right <= scanRight &&
-            box.bottom <= scanBottom
+            val box = barcode.boundingBox ?: return@filter false
+            val boxScaled = scaleBoxBasedOnViewSize(box, imageSize, viewSize)
+            return@filter boxScaled.left >= scanLeft &&
+                    boxScaled.top >= scanTop &&
+                    boxScaled.right <= scanRight &&
+                    boxScaled.bottom <= scanBottom
         }
     }
 
-    fun formatBarcode(barcode: Barcode, size: Size, orientation: Orientation): ReadableNativeMap {
+    fun formatBarcode(
+        barcode: Barcode,
+        imageSize: Size,
+        viewSize: Size,
+        orientation: Orientation
+    ): ReadableNativeMap {
         val map = WritableNativeMap()
         val box = barcode.boundingBox
 
         if (box != null) {
-            val boxRatio = getBoxRatioByOrientation(box, size, orientation)
+            val boxScaled = scaleBoxBasedOnViewSize(box, imageSize, viewSize)
+            val boxScaledRatio = getBoxRatioBasedOnOrientationForUI(boxScaled, viewSize, orientation)
 
             // Raw values
-            map.putInt("width", box.width())
-            map.putInt("height", box.height())
-            map.putInt("left", box.left)
-            map.putInt("top", box.top)
-            map.putInt("right", box.right)
-            map.putInt("bottom", box.bottom)
+            map.putInt("width", boxScaled.width().toInt())
+            map.putInt("height", boxScaled.height().toInt())
+            map.putInt("left", boxScaled.left.toInt())
+            map.putInt("top", boxScaled.top.toInt())
+            map.putInt("right", boxScaled.right.toInt())
+            map.putInt("bottom", boxScaled.bottom.toInt())
 
             // Normalized values
-            map.putDouble("leftRatio", boxRatio.leftRatio)
-            map.putDouble("topRatio", boxRatio.topRatio)
-            map.putDouble("widthRatio", boxRatio.widthRatio)
-            map.putDouble("heightRatio", boxRatio.heightRatio)
+            map.putDouble("leftRatio", boxScaledRatio.leftRatio)
+            map.putDouble("topRatio", boxScaledRatio.topRatio)
+            map.putDouble("widthRatio", boxScaledRatio.widthRatio)
+            map.putDouble("heightRatio", boxScaledRatio.heightRatio)
         }
 
         val rawValue = barcode.rawValue
