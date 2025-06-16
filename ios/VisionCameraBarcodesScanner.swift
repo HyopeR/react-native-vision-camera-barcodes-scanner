@@ -5,6 +5,7 @@ import MLKitBarcodeScanning
 
 @objc(VisionCameraBarcodesScanner)
 public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
+    private var scanner: BarcodeScanner = BarcodeScanner.barcodeScanner()
     private var scannerBuilder: BarcodeScannerOptions = BarcodeScannerOptions(formats: .all)
     private var scannerBarcodeFormats: [Any] = []
     private var scannerRatio: Ratio = Ratio(width: 1, height: 1)
@@ -25,6 +26,8 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
         } else {
             scannerBuilder = BarcodeScannerOptions(formats: BarcodeFormat(barcodeFormats))
         }
+
+        scanner = BarcodeScanner.barcodeScanner(options: scannerBuilder)
     }
 
     /*
@@ -42,8 +45,6 @@ public class VisionCameraBarcodesScanner: FrameProcessorPlugin {
      landscapeRight                 portraitUpsideDown   .left                Rotate 90° CCW
      */
     public override func callback(_ frame: Frame, withArguments arguments: [AnyHashable: Any]?) -> Any {
-        let scanner = BarcodeScanner.barcodeScanner(options: scannerBuilder)
-
         let imageBuffer = frame.buffer
         guard let imagePixelBuffer = CMSampleBufferGetImageBuffer(imageBuffer) else { return [] }
 

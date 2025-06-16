@@ -6,6 +6,7 @@ import com.facebook.react.bridge.WritableNativeArray
 
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
@@ -20,6 +21,7 @@ class VisionCameraBarcodesScannerModule(
     proxy: VisionCameraProxy,
     options: MutableMap<String, Any>?
 ) : FrameProcessorPlugin() {
+    private var scanner: BarcodeScanner = BarcodeScanning.getClient()
     private val scannerBuilder: BarcodeScannerOptions.Builder = BarcodeScannerOptions.Builder()
     private val scannerBarcodeFormats = ScannerUtils.getOptionsBarcodeFormats(options)
     private val scannerRatio = ScannerUtils.getOptionsRatio(options)
@@ -35,11 +37,12 @@ class VisionCameraBarcodesScannerModule(
             val otherFormats = barcodeFormats.drop(1).toIntArray()
             scannerBuilder.setBarcodeFormats(firstFormat, *otherFormats)
         }
+
+        scanner = BarcodeScanning.getClient(scannerBuilder.build())
     }
 
     override fun callback(frame: Frame, arguments: Map<String, Any>?): Any {
         try {
-            val scanner = BarcodeScanning.getClient(scannerBuilder.build())
             val frameImage: Image = frame.image
             val frameImageRotationDegrees = frame.imageProxy.imageInfo.rotationDegrees
 

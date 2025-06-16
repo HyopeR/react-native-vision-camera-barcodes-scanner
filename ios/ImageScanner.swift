@@ -5,6 +5,7 @@ import MLKitVision
 
 @objc(ImageScanner)
 class ImageScanner: NSObject {
+    private var scanner: BarcodeScanner = BarcodeScanner.barcodeScanner()
     private var scannerBuilder: BarcodeScannerOptions = BarcodeScannerOptions(formats: .all)
 
     @objc(process:options:withResolver:withRejecter:)
@@ -26,8 +27,9 @@ class ImageScanner: NSObject {
             scannerBuilder = BarcodeScannerOptions(formats: BarcodeFormat(barcodeFormats))
         }
 
+        scanner = BarcodeScanner.barcodeScanner(options: scannerBuilder)
+
         var array: [Any] = []
-        let scanner = BarcodeScanner.barcodeScanner(options: scannerBuilder)
 
         guard let imageUI = UIImage(contentsOfFile: uri) else {
             reject("Error", "Can't find photo.", nil)

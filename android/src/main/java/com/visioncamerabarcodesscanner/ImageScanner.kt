@@ -21,7 +21,8 @@ class ImageScanner(reactContext: ReactApplicationContext) : ReactContextBaseJava
         const val NAME = "ImageScanner"
     }
 
-    private var scannerBuilder = BarcodeScannerOptions.Builder()
+    private var scanner = BarcodeScanning.getClient()
+    private val scannerBuilder = BarcodeScannerOptions.Builder()
 
     override fun getName() = NAME
 
@@ -41,8 +42,9 @@ class ImageScanner(reactContext: ReactApplicationContext) : ReactContextBaseJava
             scannerBuilder.setBarcodeFormats(firstFormat, *otherFormats)
         }
 
+        scanner = BarcodeScanning.getClient(scannerBuilder.build())
+
         val array = WritableNativeArray()
-        val scanner = BarcodeScanning.getClient(scannerBuilder.build())
 
         val imageUri = Uri.parse(uri)
         // Loads image and applies EXIF rotation. width/height are already corrected.
